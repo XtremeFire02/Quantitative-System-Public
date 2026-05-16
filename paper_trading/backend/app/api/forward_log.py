@@ -1,15 +1,14 @@
 """
-P3 forward shadow log — per-day record of every evaluation.
+Shadow strategy forward log — per-day record of every evaluation.
 
 Returns one row per day regardless of whether a trade fired.
 No-trade days are included because they prove the rule stayed frozen.
 
 Key column: n3_also_fired
-  True  → P3 and N3 both active on that day (overlap day)
-  False → P3 exclusive day (the independence monitor)
+  True  → shadow strategy and primary strategy both active on that day (overlap day)
+  False → shadow strategy exclusive day (the independence monitor)
 
-The Sharpe on P3-exclusive days is the single most important forward metric.
-Research baseline: Sh=+5.18, p=0.007 on 57 OOS exclusive trades.
+The Sharpe on exclusive days is the key forward validation metric.
 """
 import json
 from datetime import timezone, datetime

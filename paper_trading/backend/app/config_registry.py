@@ -32,10 +32,10 @@ AVAILABLE_MARKETS: dict = {
 }
 
 AVAILABLE_STRATEGIES: dict = {
-    # ── Official validated strategies ─────────────────────────────────────────
+    # ── Official validated strategies (parameters private) ────────────────────
     "N3_DVOL_LONG": {
         "display_name": "N3 DVOL — Long Only",
-        "description": "Enter long when DVOL 30d z-score > 0.75 and DVOL ≥ 54. Exit after 24h. OOS 2024–2026: Sharpe +2.95, n=199 trades.",
+        "description": "Validated volatility-regime long signal on BTCUSDT perpetual. Strategy parameters are private.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -44,7 +44,7 @@ AVAILABLE_STRATEGIES: dict = {
     },
     "N3_DVOL_LONGSHORT": {
         "display_name": "N3 DVOL — Long + Short",
-        "description": "N3 DVOL with both long (z > 0.75) and short (z < −0.75) legs, DVOL ≥ 54. Short leg Sharpe +0.81 — lower edge than long-only.",
+        "description": "Long + short variant of N3 DVOL. Strategy parameters are private.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -53,12 +53,9 @@ AVAILABLE_STRATEGIES: dict = {
     },
 
     # ── Shadow research variants ───────────────────────────────────────────────
-    # Looser thresholds → more live observations → faster forward IC accumulation.
-    # Trades are clearly separated in the DB by strategy_name.
-    # Results must NOT be merged with the official N3 record.
     "N3_SHADOW_050_51": {
-        "display_name": "N3 Shadow — z>0.50, DVOL≥51",
-        "description": "Shadow variant: N3z > 0.50 and DVOL ≥ 51. Fires more often than official N3. Shadow research only — do not compare to validated N3 results.",
+        "display_name": "N3 Shadow — variant A",
+        "description": "Shadow variant with relaxed thresholds. Fires more often than official. Shadow research only — do not compare to validated results.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -66,8 +63,8 @@ AVAILABLE_STRATEGIES: dict = {
         "status": "shadow",
     },
     "N3_SHADOW_075_51": {
-        "display_name": "N3 Shadow — z>0.75, DVOL≥51",
-        "description": "Shadow variant: same N3z threshold as official, but DVOL filter relaxed to ≥ 51. Tests whether DVOL=51–53 days have edge.",
+        "display_name": "N3 Shadow — variant B",
+        "description": "Shadow variant with relaxed DVOL filter. Tests whether lower-DVOL days have edge.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -75,12 +72,23 @@ AVAILABLE_STRATEGIES: dict = {
         "status": "shadow",
     },
     "N3_SHADOW_050_46": {
-        "display_name": "N3 Shadow — z>0.50, DVOL≥46",
-        "description": "Shadow variant: both thresholds relaxed. Fires in low-IV environments. Expected to show weak or no edge based on backtest — confirms regime dependence in live data.",
+        "display_name": "N3 Shadow — variant C",
+        "description": "Shadow variant: both thresholds relaxed. Fires in low-IV environments. Confirms regime dependence in live data.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
         "tags": ["shadow", "mean-reversion", "vol-signal"],
+        "status": "shadow",
+    },
+
+    # ── Shadow — second validated signal ─────────────────────────────────────
+    "P3_OIPD_DD": {
+        "display_name": "P3 OI-Price Divergence — DD Regime",
+        "description": "Shadow-deployment second signal. Strategy parameters are private.",
+        "compatible_markets": ["BTCUSDT"],
+        "hold_hours": 24,
+        "requires_dvol": True,
+        "tags": ["order-flow", "regime", "shadow"],
         "status": "shadow",
     },
 
@@ -98,7 +106,7 @@ AVAILABLE_STRATEGIES: dict = {
     # ── Utility ───────────────────────────────────────────────────────────────
     "EXECUTION_TEST": {
         "display_name": "Execution Test Bot",
-        "description": "Opens a paper LONG every Monday and holds 24h. Not alpha — tests that trade open/close/funding/PnL/frontend all work correctly during low-DVOL periods.",
+        "description": "Opens a paper LONG every Monday and holds 24h. Not alpha — tests that trade open/close/funding/PnL/frontend all work correctly.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": False,

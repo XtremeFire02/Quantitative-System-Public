@@ -52,7 +52,7 @@ export default function Dashboard() {
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div className="page-title">Dashboard</div>
-          <div className="page-subtitle">N3_DVOL_Fear_Resolution_v1 · N3z &gt; 0.75 AND DVOL ≥ 54 · 24h hold · Maker</div>
+          <div className="page-subtitle">Live market data, signal status, and open positions</div>
         </div>
         <div className="btn-row" style={{ marginBottom: 0 }}>
           <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
@@ -89,14 +89,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-label">N3 z-score</div>
             <div className="card-value">{fmt(data.n3_z, 3)}</div>
-            <div className="card-sub">vs 0.75 threshold</div>
+            <div className="card-sub">Volatility z-score</div>
           </div>
           <div className="card">
             <div className="card-label">DVOL Filter</div>
             <div className="card-value" style={{ fontSize: 15 }}>
               {data.dvol_filter_pass == null ? "—" : (
                 <span className={`badge ${data.dvol_filter_pass ? "badge-green" : "badge-red"}`}>
-                  {data.dvol_filter_pass ? "PASS ≥ 54" : "FAIL < 54"}
+                  {data.dvol_filter_pass ? "PASS" : "FAIL"}
                 </span>
               )}
             </div>

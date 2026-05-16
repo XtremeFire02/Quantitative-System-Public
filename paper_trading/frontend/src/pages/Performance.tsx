@@ -44,7 +44,7 @@ export default function Performance() {
     <div>
       <div className="page-header">
         <div className="page-title">Performance</div>
-        <div className="page-subtitle">N3_DVOL_Fear_Resolution_v1 · Paper trading results</div>
+        <div className="page-subtitle">Paper trading equity curve and strategy metrics</div>
       </div>
 
       {/* Summary stats */}

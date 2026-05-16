@@ -99,13 +99,8 @@ def get_performance_by_strategy(
 ):
     """Per-strategy performance breakdown.
 
-    Returns separate stats for N3_DVOL_LONG, P3_OIPD_DD, and all
-    relevant combinations so each signal can be evaluated independently.
-    The key rows are:
-      N3 only        — N3_DVOL_LONG trades on days P3 did not fire
-      P3 only        — P3_OIPD_DD trades on days N3 did not fire
-      N3 + P3        — all trades from either signal
-      P3 excl N3     — P3 trades on days with no N3 trade (independence test)
+    Returns individual stats per strategy plus cross-strategy combination
+    rows so each signal can be evaluated independently and for overlap.
     """
     closed = db.query(Trade).filter(Trade.status == "closed").all()
     if not closed:

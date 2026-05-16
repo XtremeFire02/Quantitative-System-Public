@@ -6,7 +6,6 @@ import Trades from "./pages/Trades";
 import TradeDetail from "./pages/TradeDetail";
 import Performance from "./pages/Performance";
 import SystemHealth from "./pages/SystemHealth";
-import Replay from "./pages/Replay";
 import RiskDashboard from "./pages/RiskDashboard";
 import DataQuality from "./pages/DataQuality";
 import StrategyPipeline from "./pages/StrategyPipeline";
@@ -22,16 +21,15 @@ function Nav() {
   return (
     <nav className="nav">
       <div className="nav-brand">
-        <span className="nav-logo">N3</span>
-        <span className="nav-title">DVOL Paper Trading</span>
+        <span className="nav-logo">QF</span>
+        <span className="nav-title">Paper Trading</span>
       </div>
       <div className="nav-links">
         <NavLink to="/" className={cls} end>Dashboard</NavLink>
         <NavLink to="/signals" className={cls}>Signals</NavLink>
         <NavLink to="/trades" className={cls}>Trades</NavLink>
         <NavLink to="/performance" className={cls}>Performance</NavLink>
-        <NavLink to="/replay" className={cls}>Replay</NavLink>
-        <NavLink to="/forward-log" className={cls}>P3 Log</NavLink>
+        <NavLink to="/forward-log" className={cls}>Shadow Log</NavLink>
         <NavLink to="/risk" className={cls}>Risk</NavLink>
         <NavLink to="/pipeline" className={cls}>Pipeline</NavLink>
         <NavLink to="/alerts" className={cls}>Alerts</NavLink>
@@ -56,7 +54,6 @@ export default function App() {
             <Route path="/trades" element={<Trades />} />
             <Route path="/trades/:id" element={<TradeDetail />} />
             <Route path="/performance" element={<Performance />} />
-            <Route path="/replay" element={<Replay />} />
             <Route path="/forward-log" element={<ForwardLog />} />
             <Route path="/risk" element={<RiskDashboard />} />
             <Route path="/pipeline" element={<StrategyPipeline />} />

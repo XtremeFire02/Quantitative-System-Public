@@ -88,9 +88,8 @@ export default function TradeDetail() {
         <div className="card">
           <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.8 }}>
             <div>Strategy: <strong style={{ color: "#e2e8f0" }}>{trade.strategy_name}</strong></div>
-            <div>Entry DVOL: <strong style={{ color: "#e2e8f0" }}>{fmt(trade.entry_dvol, 1)}</strong> (threshold: 54)</div>
-            <div>Entry N3z: <strong style={{ color: "#4ade80" }}>{fmt(trade.entry_n3_z, 4)}</strong> (threshold: 0.75)</div>
-            <div>Rule: <em>N3z &gt; 0.75 AND DVOL ≥ 54 → LONG</em></div>
+            <div>Entry DVOL: <strong style={{ color: "#e2e8f0" }}>{fmt(trade.entry_dvol, 1)}</strong></div>
+            <div>Entry signal z-score: <strong style={{ color: "#4ade80" }}>{fmt(trade.entry_n3_z, 4)}</strong></div>
           </div>
         </div>
       </div>

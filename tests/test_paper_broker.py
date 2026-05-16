@@ -60,7 +60,7 @@ def test_open_trade_creates_trade_record(db):
 
 
 def test_open_trade_stores_entry_reason(db):
-    reason = "N3z = 1.200 > 0.75 and DVOL = 56.0 >= 54"
+    reason = "signal conditions met: z = 1.200, vol_index = 56.0"
     trade = _open(db, entry_reason=reason)
     assert trade.entry_reason == reason
 

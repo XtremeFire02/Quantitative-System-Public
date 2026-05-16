@@ -23,6 +23,9 @@ EXIT_CHECK_INTERVAL_MINUTES = 15
 # Stale data threshold (minutes)
 DATA_STALE_MINUTES = 120
 
+# Minimum number of lookback days required before a signal can be evaluated
+DVOL_LOOKBACK_DAYS = 30
+
 # Portfolio risk limits
 PORTFOLIO_MAX_OPEN_POSITIONS  = 3       # across all strategies
 PORTFOLIO_MAX_SAME_MARKET     = 2       # per market (e.g. BTCUSDT)

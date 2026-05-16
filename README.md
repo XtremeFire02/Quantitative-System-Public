@@ -176,7 +176,6 @@ Binance FAPI ──────────┘ (price + funding)                
 | `/trades` | Trades | Full trade log: price return + funding − fees per trade |
 | `/trades/:id` | Trade Detail | Per-trade PnL attribution and entry signal context |
 | `/performance` | Performance | Equity curve, drawdown, Sharpe, yearly breakdown |
-| `/replay` | Replay | Verify live implementation matches research backtest |
 | `/forward-log` | ForwardLog | Shadow strategy log + independence monitor |
 | `/risk` | RiskDashboard | Portfolio exposure, limit gauges, kill switch |
 | `/pipeline` | StrategyPipeline | Strategy lifecycle status editor |

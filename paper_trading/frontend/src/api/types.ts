@@ -116,65 +116,6 @@ export interface SystemLog {
   message: string;
 }
 
-export interface ReplayTrade {
-  date: string;
-  side: string;
-  n3z: number;
-  dvol: number;
-  r24h_bp: number;
-  fund_24h_bp: number;
-  net_pnl_bp: number;
-  cumulative_pnl_bp: number;
-}
-
-export interface ReplayPeriod {
-  label: string;
-  start: string;
-  end: string;
-  n_trades: number;
-  sharpe: number | null;
-  total_pnl_bp: number;
-  max_dd_bp: number;
-  win_rate: number | null;
-  avg_win_bp: number | null;
-  avg_loss_bp: number | null;
-  exposure_pct: number | null;
-  longs: number;
-  shorts: number;
-  is_oos: boolean;
-}
-
-export interface ReplaySummary {
-  n_trades: number;
-  sharpe: number | null;
-  total_pnl_bp: number;
-  max_dd_bp: number;
-  win_rate: number | null;
-  avg_win_bp: number | null;
-  avg_loss_bp: number | null;
-}
-
-export interface ReplayTargets {
-  n_trades: number;
-  sharpe: number;
-  total_pnl_bp: number;
-  max_dd_bp: number;
-  win_rate: number;
-  note: string;
-}
-
-export interface ReplayResponse {
-  status: string;
-  computed_at: string;
-  data_range: { start: string; end: string };
-  query_start: string;
-  parameters: Record<string, string | number>;
-  reference_targets: ReplayTargets;
-  summary: ReplaySummary;
-  period_breakdown: ReplayPeriod[];
-  trades: ReplayTrade[];
-}
-
 // ── Portfolio risk ──────────────────────────────────────────────────────────
 
 export interface RiskLimits {

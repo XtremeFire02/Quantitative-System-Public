@@ -1,5 +1,5 @@
 """
-N3 DVOL Paper Trading System — FastAPI backend
+Paper Trading System — FastAPI backend
 """
 import asyncio
 from contextlib import asynccontextmanager
@@ -11,8 +11,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.database import init_db
 from app.config import DAILY_JOB_HOUR_UTC, EXIT_CHECK_INTERVAL_MINUTES
-from app.api import dashboard, signals, trades, performance, system_health, replay, config
-from app.api import p3_replay, alerts as alerts_api, forward_log
+from app.api import dashboard, signals, trades, performance, system_health, config
+from app.api import alerts as alerts_api, forward_log
 from app.api import portfolio_risk, strategy_pipeline, data_quality, experiments
 from app.api import kill_switch as kill_switch_api
 from app.api import audit as audit_api
@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="N3 DVOL Paper Trading System",
-    description="Paper trading validation for N3_DVOL_Fear_Resolution_v1 strategy",
+    title="Paper Trading System",
+    description="Paper trading validation system for quantitative strategies",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -68,8 +68,6 @@ app.include_router(signals.router, prefix="/api", tags=["signals"])
 app.include_router(trades.router, prefix="/api", tags=["trades"])
 app.include_router(performance.router, prefix="/api", tags=["performance"])
 app.include_router(system_health.router, prefix="/api", tags=["system"])
-app.include_router(replay.router,      prefix="/api", tags=["replay"])
-app.include_router(p3_replay.router,   prefix="/api", tags=["replay"])
 app.include_router(config.router,      prefix="/api", tags=["config"])
 app.include_router(alerts_api.router,       prefix="/api", tags=["alerts"])
 app.include_router(forward_log.router,      prefix="/api", tags=["forward-log"])

@@ -62,7 +62,6 @@ export default function ForwardLog() {
           <div className="page-title">P3 Forward Log</div>
           <div className="page-subtitle">
             Shadow evaluations — one row per day including no-signal days.
-            Independence key metric: exclusive-trade Sharpe (OOS baseline: +5.18, p=0.007).
           </div>
         </div>
         <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>

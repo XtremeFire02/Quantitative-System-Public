@@ -1,7 +1,7 @@
 import { apiFetch, apiPost, apiPostBody, apiDelete, apiPatch } from "./client";
 import type {
   DashboardData, SignalRecord, TradeRecord, PerformanceData,
-  SystemHealth, SystemLog, ReplayResponse,
+  SystemHealth, SystemLog,
   AvailableConfig, ActiveBotConfig,
   PortfolioState, RiskLimits,
   StrategyPipelineRow, PromotionRules,
@@ -24,9 +24,6 @@ export const api = {
   systemLogs: (limit = 50) => apiFetch<SystemLog[]>(`/system/logs?limit=${limit}`),
   runDailySignal: () => apiPost<unknown>("/jobs/run-daily-signal"),
   checkExits: () => apiPost<unknown>("/jobs/check-exits"),
-  replay: (start = "2024-01-01", includeTrain = false) =>
-    apiFetch<ReplayResponse>(`/replay?start=${start}&include_train=${includeTrain}`),
-
   // Bot configuration
   configAvailable: () => apiFetch<AvailableConfig>("/config/available"),
   configActive: () => apiFetch<ActiveBotConfig[]>("/config/active"),
@@ -71,7 +68,6 @@ export const api = {
 export type {
   DashboardData, SignalRecord, TradeRecord, PerformanceData,
   SystemHealth, SystemLog, EquityPoint, YearlyBreakdown,
-  ReplayResponse, ReplayTrade, ReplayPeriod, ReplaySummary,
   AvailableConfig, ActiveBotConfig, MarketInfo, StrategyInfo,
   PortfolioState, RiskLimits, RiskPosition,
   StrategyPipelineRow, PromotionRules, StrategyLiveStats,

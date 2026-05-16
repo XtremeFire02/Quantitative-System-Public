@@ -169,7 +169,6 @@ app/
     ├── signals.py           GET /api/signals/{latest,history}
     ├── trades.py            GET /api/trades
     ├── performance.py       GET /api/performance
-    ├── replay.py            GET /api/replay
     ├── forward_log.py       GET /api/forward-log
     ├── system_health.py     GET /api/system/{health,logs}
     ├── data_quality.py      GET /api/system/data-quality
@@ -250,7 +249,6 @@ React + TypeScript SPA running on port 3000.
 | `/trades` | Trades | Full trade journal |
 | `/trades/:id` | TradeDetail | Per-trade PnL attribution |
 | `/performance` | Performance | Equity curve, Sharpe, yearly breakdown |
-| `/replay` | Replay | Historical backtest verification |
 | `/forward-log` | ForwardLog | Shadow strategy log |
 | `/risk` | RiskDashboard | Portfolio exposure, limit gauges, kill switch |
 | `/pipeline` | StrategyPipeline | Strategy lifecycle status editor |
