@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-root:
+    name: Root tests (parity + unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install numpy pandas httpx pytest pytest-asyncio
+      - run: python -m pytest tests/ -v --tb=short
+
+  test-backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r paper_trading/backend/requirements.txt
+      - working-directory: paper_trading/backend
+        run: python -m pytest tests/ -v --tb=short
+
+  frontend:
+    name: Frontend (tsc + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: paper_trading/frontend/package-lock.json
+      - working-directory: paper_trading/frontend
+        run: npm ci
+      - working-directory: paper_trading/frontend
+        run: npx tsc --noEmit
+      - working-directory: paper_trading/frontend
+        run: npm run build

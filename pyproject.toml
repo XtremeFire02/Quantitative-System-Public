@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "quant-framework"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "httpx",
+]
+
+[tool.setuptools.packages.find]
+# Discover all root-level packages: framework, strategies, backtest, live
+where = ["."]
+include = ["framework*", "strategies*", "backtest*", "live*", "archive*"]
+
+[tool.pytest.ini_options]
+# Root-level tests only. Backend tests are run separately from paper_trading/backend/
+# (they require that directory on sys.path, handled by paper_trading/backend/tests/conftest.py)
+testpaths = ["tests"]

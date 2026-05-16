@@ -1,0 +1,101 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0a0a0f;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #111118; border-bottom: 1px solid #1e1e2e;
+  padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100;
+}
+.nav-brand { display: flex; align-items: center; gap: 10px; }
+.nav-logo {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff; font-weight: 800; font-size: 13px;
+  padding: 4px 8px; border-radius: 6px; letter-spacing: 0.5px;
+}
+.nav-title { color: #94a3b8; font-size: 13px; font-weight: 500; }
+.nav-links { display: flex; gap: 4px; }
+.nav-link {
+  color: #64748b; text-decoration: none; padding: 6px 14px;
+  border-radius: 6px; font-size: 13px; font-weight: 500; transition: all 0.15s;
+}
+.nav-link:hover { color: #e2e8f0; background: #1e1e2e; }
+.nav-link.active { color: #a5b4fc; background: #1e1e35; }
+
+.main-content { padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+.page-header { margin-bottom: 24px; }
+.page-title { font-size: 20px; font-weight: 700; color: #f1f5f9; }
+.page-subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+.cards-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.card {
+  background: #111118; border: 1px solid #1e1e2e; border-radius: 10px;
+  padding: 16px 20px;
+}
+.card-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 6px; }
+.card-value { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+.card-sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600;
+}
+.badge-green { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+.badge-red { background: #2d0707; color: #f87171; border: 1px solid #991b1b; }
+.badge-yellow { background: #2d2007; color: #fbbf24; border: 1px solid #92400e; }
+.badge-blue { background: #0c1a3d; color: #60a5fa; border: 1px solid #1d4ed8; }
+.badge-gray { background: #1e1e2e; color: #94a3b8; border: 1px solid #2d2d3e; }
+
+.positive { color: #4ade80; }
+.negative { color: #f87171; }
+.neutral { color: #94a3b8; }
+
+.section { margin-top: 28px; }
+.section-title { font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; }
+
+.table-wrapper { overflow-x: auto; border-radius: 10px; border: 1px solid #1e1e2e; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 11px; color: #64748b; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  padding: 10px 14px; background: #0d0d14; border-bottom: 1px solid #1e1e2e;
+}
+td { padding: 10px 14px; border-bottom: 1px solid #13131f; font-size: 13px; color: #cbd5e1; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #111118; }
+
+.chart-container {
+  background: #111118; border: 1px solid #1e1e2e; border-radius: 10px;
+  padding: 20px; margin-top: 16px;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 16px; }
+
+.btn {
+  padding: 7px 16px; border-radius: 7px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: none; transition: all 0.15s;
+}
+.btn-primary { background: #4f46e5; color: #fff; }
+.btn-primary:hover { background: #6366f1; }
+.btn-secondary { background: #1e1e2e; color: #94a3b8; border: 1px solid #2d2d3e; }
+.btn-secondary:hover { background: #2a2a3e; color: #e2e8f0; }
+.btn-ghost { background: transparent; color: #64748b; border: 1px solid #1e1e2e; }
+.btn-ghost:hover { background: #1e1e2e; }
+
+.loading { color: #64748b; padding: 40px; text-align: center; }
+.error-msg { color: #f87171; padding: 40px; text-align: center; }
+.btn-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+a.trade-link { color: #818cf8; text-decoration: none; }
+a.trade-link:hover { color: #a5b4fc; text-decoration: underline; }

@@ -1,0 +1,39 @@
+id: B2
+name: "Phase 5 Signal Research"
+phase: 5
+status: killed
+stage_reached: 4
+verdict_date: "2026-05"
+
+dataset:
+  instrument: BTCUSDT-PERP
+  exchange: Binance
+  splits: framework.splits   # canonical — never hardcode dates here
+
+cost_model: taker
+
+signals:
+  S1a:
+    name: "Realized Skewness"
+    status: killed
+    stage_reached: 4
+    kill_reason: >
+      Passes IC screen (Stage 2) but killed in deep dive (Stage 4).
+      95% bootstrap CI crosses zero; edge not reliable.
+
+  S1b:
+    name: "Pre-Settlement Flow"
+    status: killed
+    stage_reached: 2
+    kill_reason: "Failed IC screen."
+
+  S1c:
+    name: "Cross-Exchange Funding Divergence"
+    status: killed
+    stage_reached: 2
+    kill_reason: "Failed IC screen."
+
+report: "results/reports/killed reports/B2.tex"
+scripts:
+  - research/killed (Failed Stage 4)/B2/27_phase5_ic_screen.py
+  - research/killed (Failed Stage 4)/B2/28_s1a_deep_dive.py

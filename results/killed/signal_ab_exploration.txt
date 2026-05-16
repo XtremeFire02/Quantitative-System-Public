@@ -1,0 +1,145 @@
+Loading data...
+Train: 525,600 bars | Val: 262,080 | Test: 264,960
+
+========================================================================
+SIGNAL A: FUNDING RATE CURVATURE
+========================================================================
+Funding events available: 2,193
+  d2 range: [-0.000918, 0.000619]
+  exhaustion mean: -1.249791e-09  std: 3.245172e-08
+Settlement bars in train/val/test: 1095 / 546 / 552
+
+[A1] IC profile — Signal A features vs forward returns (train, settlement bars)
+  Signal                   ret_1h   ret_4h   ret_8h
+  d2 (raw curvature)     -0.00954 +0.01677 +0.03418
+  exhaustion (-L×d2)     -0.02014 -0.02717 -0.03314
+  d1 (momentum)          -0.00831 +0.00993 +0.00809
+
+[A2] Permutation test — exhaustion signal vs ret_8h (train settlement bars)
+  Observed IC: -0.03314
+  Perm p-val:  0.26750
+  Null 95% CI: [-0.06026, +0.05784]
+  IC / null_std = -1.11σ
+
+[A3] Block bootstrap — exhaustion signal vs ret_8h (block=3 settlements = 24h)
+  Observed IC: -0.03314  boot-p: 0.25400
+  Boot 95% CI: [-0.05912, +0.05865]
+
+[A4] Conditional IC — does d2 add power beyond funding level alone?
+  |funding| > 50th pct  n=548  IC=+0.00887  vs unconditional=-0.03314
+  |funding| > 66th pct  n=493  IC=+0.03283  vs unconditional=-0.03314
+  |funding| > 75th pct  n=493  IC=+0.03283  vs unconditional=-0.03314
+
+[A5] Walk-forward OOS IC — exhaustion signal vs ret_8h (val + test, 90-day windows)
+  OOS windows: 10
+  Mean IC:   +0.01830  Std: 0.04851
+  Frac correct direction: 70.0%
+  95% CI: [-0.06787, +0.08811]
+
+[A6] 1m-bar IC profile (forward-filled exhaustion signal, train set)
+  ret_5m: IC=-0.000902
+  ret_15m: IC=-0.002038
+  ret_1h: IC=-0.006499
+  ret_4h: IC=-0.019601
+
+========================================================================
+SIGNAL B: INFORMED FLOW (TRADE-SIZE Z × QUOTE-OFI)
+========================================================================
+  Features constructed:
+    avg_trade_usd                mean=+3409.4572  std=1471.4673  skew=1.50  NaN=0.0%
+    ofi_quote                    mean=-0.0042  std=0.1868  skew=0.02  NaN=0.0%
+    trade_size_z60               mean=-0.0039  std=1.0280  skew=0.94  NaN=0.0%
+    informed_flow_60             mean=+0.0017  std=0.2194  skew=-0.05  NaN=0.0%
+    informed_flow_60_s5          mean=+0.0017  std=0.1054  skew=-0.02  NaN=0.0%
+    trade_size_kurt60            mean=+1.8475  std=3.6852  skew=4.05  NaN=0.0%
+
+[B1] IC profile — Signal B features vs forward returns (train, 1m bars)
+  Signal                                 1m       5m      15m       1h
+  informed_flow_60                 -0.01788 -0.01958 -0.01371 -0.01033
+  informed_flow_60_s5              -0.02128 -0.02596 -0.02204 -0.01850
+  informed_flow_60_s15             -0.01806 -0.02508 -0.02613 -0.02757
+  informed_flow_300                -0.01851 -0.01948 -0.01349 -0.00962
+  trade_size_z60                   +0.00334 +0.00203 +0.00212 -0.00150
+  ofi_quote (baseline)             -0.01248 -0.02869 -0.02157 -0.01449
+  trade_size_kurt60                +0.00039 -0.00301 -0.00405 -0.00217
+
+[B2] IC vs |ret| — does trade-size kurtosis predict volatility?
+  trade_size_kurt60            IC vs |ret_1h| = -0.05919
+  trade_size_kurt300           IC vs |ret_1h| = -0.10085
+  trade_size_z60               IC vs |ret_1h| = +0.02465
+  informed_flow_60             IC vs |ret_1h| = +0.00320
+
+[B3] Permutation tests (H0: IC=0, 2000 perms, subsample 50,000)
+  informed_flow_60  vs ret_5m              IC=-0.01958  p=0.0000  -4.3σ
+  informed_flow_60  vs ret_15m             IC=-0.01371  p=0.0030  -3.1σ
+  informed_flow_60  vs ret_1h              IC=-0.01033  p=0.0225  -2.3σ
+  informed_flow_s5  vs ret_5m              IC=-0.02596  p=0.0000  -6.0σ
+  trade_size_z60    vs ret_5m              IC=+0.00203  p=0.6595  0.5σ
+  trade_size_kurt60 vs |ret_1h|            IC=-0.05919  p=0.0000  -13.3σ
+
+[B4] Block bootstrap — informed_flow_60 vs ret_5m (block=30, B=1000)
+  Observed IC: -0.01958  boot-p: 0.00000
+  Boot 95% CI: [-0.00812, +0.00856]
+  IC / boot_std = -4.4σ
+
+[B5] Block bootstrap — informed_flow_60 vs ret_1h (block=60, B=1000)
+  Observed IC: -0.01033  boot-p: 0.02300
+  Boot 95% CI: [-0.00928, +0.00896]
+  IC / boot_std = -2.3σ
+
+[B6] Walk-forward OOS IC — informed_flow_60 vs ret_5m (30-day windows, val+test)
+  OOS windows: 336
+  Mean IC:   -0.01306  Std: 0.00718
+  Frac correct direction: 0.6%
+  95% CI: [-0.02824, -0.00095]
+
+[B7] Walk-forward OOS IC — informed_flow_60 vs ret_1h (30-day windows)
+  OOS windows: 336
+  Mean IC:   -0.00928  Std: 0.00570
+  Frac correct direction: 8.0%
+
+[B8] Lead-lag profile — informed_flow_60 vs future ret at lags 0..60 bars
+  lag=  0  IC(informed_flow_60, ret[t+0]) = -0.017876
+  lag=  1  IC(informed_flow_60, ret[t+1]) = -0.012865
+  lag=  2  IC(informed_flow_60, ret[t+2]) = -0.006310
+  lag=  5  IC(informed_flow_60, ret[t+5]) = -0.004128
+  lag= 10  IC(informed_flow_60, ret[t+10]) = -0.001953
+  lag= 15  IC(informed_flow_60, ret[t+15]) = -0.004204
+  lag= 30  IC(informed_flow_60, ret[t+30]) = -0.001279
+  lag= 60  IC(informed_flow_60, ret[t+60]) = -0.000253
+
+========================================================================
+SIGNAL A+B: COMBINED ANALYSIS
+========================================================================
+
+[C1] Spearman correlation between Signal A and Signal B: -0.00133
+     (Low correlation = signals are complementary)
+
+[C2] IC of combined signal vs returns (train set):
+  ret_5m: A=-0.00089  B=-0.01962  A+B=-0.01774
+  ret_1h: A=-0.00635  B=-0.01028  A+B=-0.01025
+  ret_8h: A=-0.02423  B=-0.00594  A+B=-0.01920
+
+[C3] Breakeven IC analysis (taker costs = 0.10%)
+  horizon=5m   σ_ret=0.1516%  IC_breakeven=0.4712  (need IC>0.4712 to profit after 0.10% RT cost)
+  horizon=15m  σ_ret=0.2571%  IC_breakeven=0.2778  (need IC>0.2778 to profit after 0.10% RT cost)
+  horizon=1h   σ_ret=0.5081%  IC_breakeven=0.1406  (need IC>0.1406 to profit after 0.10% RT cost)
+  horizon=4h   σ_ret=1.0079%  IC_breakeven=0.0709  (need IC>0.0709 to profit after 0.10% RT cost)
+
+========================================================================
+SUMMARY
+========================================================================
+
+Signal A (Funding Rate Curvature / Exhaustion):
+  Tests whether d²F/dt² — the acceleration of funding sentiment — predicts
+  returns at the 8h settlement frequency. The 'exhaustion' signal
+  (-level × d²F) encodes when extreme funding is starting to reverse.
+
+Signal B (Informed Flow):
+  Tests whether unusually large trades in a direction (trade_size_z × quote-OFI)
+  predict short-term returns. This is a proxy for institutional/informed order
+  flow that bypasses the noise in retail taker flow.
+
+Combined:
+  If A and B are uncorrelated, combining them may produce a signal with
+  higher IC (closer to the breakeven threshold for profitable trading).

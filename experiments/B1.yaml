@@ -1,0 +1,28 @@
+id: B1
+name: "Phase 4 Signal Research"
+phase: 4
+status: killed
+stage_reached: 4
+verdict_date: "2026-05"
+
+dataset:
+  instrument: BTCUSDT-PERP
+  exchange: Binance
+  splits: framework.splits   # canonical — never hardcode dates here
+
+cost_model: taker
+
+signals:
+  Q5c:
+    name: "Mark-Index Basis / Cross-Asset Implied Volatility / Liquidation Exhaustion"
+    status: killed
+    stage_reached: 4
+    kill_reason: >
+      Passed IC screen (Stage 2) and initial OOS (Stage 3) but failed
+      stress testing at Stage 4. Edge not robust to extended evaluation
+      window and regime splits.
+
+report: "results/reports/killed reports/B1.tex"
+scripts:
+  - research/killed (Failed Stage 4)/B1/25_phase4_ic_screen.py
+  - research/killed (Failed Stage 4)/B1/26_q5c_deep_dive.py

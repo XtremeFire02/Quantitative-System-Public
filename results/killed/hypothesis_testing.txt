@@ -1,0 +1,120 @@
+========================================================================
+HYPOTHESIS TESTING — SIGNAL C (CVD DIVERGENCE) AND SIGNAL E (VPIN)
+========================================================================
+Train set: 2023-01-01 to 2023-12-31
+N bars: 525,600   round-trip cost: 0.10%
+
+========================================================================
+SIGNAL C: CVD DIVERGENCE — HYPOTHESIS TESTS
+========================================================================
+
+[C1] Permutation test (H0: IC = 0, 10,000 shuffles)
+     Shuffles signal (cvd_divergence) while fixing return series.
+     Preserves return autocorrelation; destroys signal-return relationship.
+  ret_5m: IC=-0.03969  perm-p=0.00000  null 95%CI=[-0.00270, +0.00272]
+  ret_15m: IC=-0.04871  perm-p=0.00000  null 95%CI=[-0.00273, +0.00270]
+  ret_1h: IC=-0.05553  perm-p=0.00000  null 95%CI=[-0.00273, +0.00263]
+
+[C2] Circular block bootstrap (block=60, B=2000)
+     Resamples blocks of 60 consecutive signal bars, preserving
+     autocorrelation in the signal. Stronger test than permutation.
+  ret_5m (block=30): IC=-0.03969  boot-p=0.00000  boot 95%CI=[-0.00539, +0.00523]
+  ret_15m (block=60): IC=-0.04871  boot-p=0.00000  boot 95%CI=[-0.00858, +0.00838]
+  ret_1h (block=60): IC=-0.05553  boot-p=0.00000  boot 95%CI=[-0.01332, +0.01325]
+
+[C3] Granger causality test (H0: cvd_divergence does not Granger-cause ret_1h)
+     Null: lagged cvd_divergence adds no predictive power beyond AR(p) of ret_1h.
+  Lag  F-stat   p-value
+    1    1.141  0.28535 
+    2    7.651  0.00048 ***
+    3    4.275  0.00503 ***
+    4    2.935  0.01939 **
+    5    2.988  0.01061 **
+
+[C4] Economic significance analysis
+     Round-trip cost = 0.1000%
+     Edge per trade = |cvd_pct_rank - 0.5| × expected_return_in_direction
+     We measure: fraction of bars where REALISED |signal × return| > cost
+  Signal fires on 222,940 / 525,540 bars (42.4%)
+  Mean P&L per triggered bar: -0.09394%
+  Fraction profitable:        34.7%
+  t-stat (P&L > 0):           -100.503
+  p-value:                    0.00000
+  Annualised return (if every bar traded at 1h horizon): -822.9%
+
+[C5] Walk-forward rolling IC (window = 30 days of 1m bars)
+     Out-of-sample periods: val and test sets.
+  OOS windows: 336
+  Mean IC:     -0.03929
+  Std  IC:     0.02684
+  Min  IC:     -0.10666
+  Max  IC:     +0.04250
+  Frac negative (correct direction): 94.9%
+  95% CI of rolling IC: [-0.09585, +0.01992]
+
+========================================================================
+SIGNAL E: VPIN REGIME SIGNAL — HYPOTHESIS TESTS
+========================================================================
+
+[E1] Block bootstrap: VPIN vs |ret_1h| (H0: IC = 0, block=50, B=2000)
+     Accounts for autocorrelation in VPIN (50-bar rolling mean).
+  Observed IC: -0.35514
+  Bootstrap p: 0.000000
+  Bootstrap 95% CI (null): [-0.01325, +0.01357]
+  Observed IC is 51.0 std devs from null mean
+
+[E2] Kolmogorov-Smirnov test: |ret_1h| distributions in high vs low VPIN
+     H0: the two distributions are identical.
+  Low  VPIN (N=262,741): mean |ret_1h| = 0.3512%
+  High VPIN (N=262,741): mean |ret_1h| = 0.1751%
+  KS statistic: 0.26228   p-value: 0.00e+00
+  Mann-Whitney U test:
+    H1: low-VPIN |returns| > high-VPIN |returns|  p = 0.00e+00
+
+[E3] VPIN lead-lag profile: IC(VPIN_t, |ret_{t+lag}|) at lags 0..60
+     Does VPIN LEAD volatility, or is it concurrent?
+  lag= 0  IC(VPIN, |ret_1h| at +0m) = -0.35514
+  lag= 1  IC(VPIN, |ret_1h| at +1m) = -0.35438
+  lag= 5  IC(VPIN, |ret_1h| at +5m) = -0.35177
+  lag=10  IC(VPIN, |ret_1h| at +10m) = -0.34894
+  lag=15  IC(VPIN, |ret_1h| at +15m) = -0.34615
+  lag=30  IC(VPIN, |ret_1h| at +30m) = -0.33769
+  lag=60  IC(VPIN, |ret_1h| at +60m) = -0.32153
+
+[E4] VPIN as high-volatility regime classifier
+     Definition: 'high-vol' = |ret_1h| in top 25% of distribution.
+     Signal: low VPIN (bottom 33%) = predict high-vol regime.
+  Base rate of high-vol hours: 25.0%
+  VPIN threshold (33rd pct):   0.2719
+  Precision: 40.9%  (of predicted high-vol, how many were?)
+  Recall:    53.9%  (of actual high-vol, how many caught?)
+  F1 score:  0.4649
+  Accuracy:  69.0%  vs base: 25.0%
+  Chi-squared independence test: chi2=34714.15  p=0.00e+00
+
+[E5] Is OFI predictive power significantly different across VPIN regimes?
+     H0: OFI IC in low-VPIN regime == OFI IC in high-VPIN regime
+     Method: permutation test on the IC difference (10,000 shuffles).
+  OFI IC in low-VPIN  regime: -0.03437
+  OFI IC in high-VPIN regime: -0.02355
+  Observed difference:        -0.01082
+  Permutation p-value:        0.00000
+  -> OFI mean-reversion is significantly stronger in low-VPIN regime
+
+========================================================================
+SUMMARY
+========================================================================
+
+Signal C (CVD Divergence):
+  C1 Permutation:        tests whether IC could arise by chance
+  C2 Block bootstrap:    accounts for signal autocorrelation (60-bar window)
+  C3 Granger causality:  tests whether signal adds info beyond AR models
+  C4 Economic sig:       tests whether realised P&L is positive after costs
+  C5 Walk-forward OOS:   tests whether IC is stable outside training set
+
+Signal E (VPIN):
+  E1 Block bootstrap:    accounts for VPIN autocorrelation (50-bar rolling)
+  E2 KS test:            tests whether vol distributions differ by regime
+  E3 Lead-lag:           tests whether VPIN leads or coincides with vol
+  E4 Classifier:         tests VPIN's precision/recall as vol predictor
+  E5 Regime-OFI diff:    tests whether VPIN significantly changes OFI alpha

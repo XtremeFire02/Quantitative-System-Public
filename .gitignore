@@ -1,0 +1,77 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Node and frontend build artifacts
+node_modules/
+dist/
+build/
+coverage/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets*.json
+credentials*.json
+
+# Local databases and runtime state
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+paper_trading/backend/*.db
+
+# Logs
+*.log
+logs/
+
+# Private datasets and derived artifacts
+data/raw/
+data/processed/
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Generated/local deployment artifacts
+backups/
+docker-compose.override.yml
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private root LaTeX notes
+/readme.tex

@@ -1,0 +1,121 @@
+Loading data...
+ofi.parquet columns: ['open', 'high', 'low', 'close', 'volume', 'quote_volume', 'trade_count', 'taker_buy_base_volume', 'taker_buy_quote_volume', 'funding_rate', 'mark_price', 'funding_annualised', 'basis', 'funding_cum_8h', 'funding_zscore', 'funding_pct_rank', 'ret_1m', 'ret_5m', 'ret_15m', 'ret_1h', 'ret_4h', 'ret_8h', 'ofi', 'ofi_centered', 'ofi_mean_5m', 'ofi_mean_15m', 'ofi_mean_60m', 'ofi_zscore_30m', 'price_dir', 'ofi_divergence']
+basis range: [-0.151115, 0.087745]
+basis std: 0.012035
+funding_pct_rank range: [0.011, 1.000]
+
+Train: 525,600  Val: 262,080  Test: 264,960
+Settlement train: 1,095  OOS: 1,098
+
+========================================================================
+FAMILY 1 — ARBITRAGE-FORCED CONVERGENCE
+========================================================================
+
+[H1a] Basis IC profile (all 1m bars, train)
+  Signal                        1m       5m      15m       1h       4h       8h
+  basis (raw)             -0.00774 -0.01800 -0.02799 -0.03069 -0.04724 -0.05633
+  basis_z                 -0.00967 -0.01930 -0.02210 -0.01351 -0.02076 +0.00182
+  basis_pct_rank2         -0.01071 -0.02289 -0.02816 -0.02314 -0.03365 -0.01339
+  |basis_z|               -0.00043 +0.00033 -0.00075 +0.00583 +0.04423 +0.04864
+
+[H1b] Basis at settlement bars only (IC vs ret_8h)
+  basis (raw)             vs ret_1h: IC=-0.17010
+  basis (raw)             vs ret_4h: IC=-0.00748
+  basis (raw)             vs ret_8h: IC=+0.01904
+  basis_z                 vs ret_1h: IC=-0.06945
+  basis_z                 vs ret_4h: IC=+0.02625
+  basis_z                 vs ret_8h: IC=+0.06243
+  joint_extreme           vs ret_1h: IC=-0.10431
+  joint_extreme           vs ret_4h: IC=-0.02498
+  joint_extreme           vs ret_8h: IC=-0.01707
+
+[H1c] Permutation test: basis vs ret_1h (all 1m bars)
+  IC=-0.01637  p=0.1295  -1.5s  null_std=0.01092
+
+[H1d] Permutation test: basis vs ret_8h (settlement bars only)
+  IC=+0.06243  p=0.4065  +0.8s
+
+[H1e] Block bootstrap: basis_z vs ret_1h (block=480=8h, B=1000)
+  IC=-0.01351  p=0.5100  95%CI=[-0.05553,+0.02705]
+
+[H1f] Conditional IC by |basis| quartile (train, vs ret_1h)
+  |basis_z| Q1 (n= 22,080) : IC(1h)=+0.03553
+  |basis_z| Q2 (n= 22,080) : IC(1h)=+0.01140
+  |basis_z| Q3 (n= 22,080) : IC(1h)=+0.02838
+  |basis_z| Q4 (n= 22,080) : IC(1h)=-0.08610
+
+[H1g] OOS walk-forward IC (basis_z vs ret_1h, 30-day windows)
+  n_windows=48  mean_IC=-0.04368  std=0.03008
+  frac_same_dir=95.8%  95%CI=[-0.11142,+0.00039]
+
+========================================================================
+H2: FUNDING CARRY AS DIRECTIONAL SIGNAL (settlement bars)
+========================================================================
+
+[H2a] IC profile: funding features vs forward returns (train, settlement bars)
+  Signal                        ret_1h   ret_4h   ret_8h
+  fund_carry (raw)            -0.06697 +0.00298 -0.02510
+  funding_pct_rank            -0.04312 +0.00716 -0.02245
+  funding_zscore              -0.04718 +0.01563 -0.02006
+  fund_extreme                -0.07194 -0.01698 -0.02236
+  fund_extreme_pos            -0.06211 -0.00518 +0.00840
+
+[H2b] Permutation test: funding_pct_rank vs ret_8h (settlement bars)
+  IC=-0.02245  p=0.4705  -0.7s
+
+[H2c] Conditional IC: top/bottom 10% vs 20% vs all funding (vs ret_8h)
+  top/bot 10%      n= 199  IC(ret_8h)=-0.01060
+  top/bot 20%      n= 392  IC(ret_8h)=-0.04568
+  top/bot 30%      n= 572  IC(ret_8h)=-0.02442
+  all              n=1,095  IC(ret_8h)=-0.02245
+
+[H2d] OOS IC: funding_pct_rank vs ret_8h (settlement bars OOS)
+  n_windows=10  mean_IC=-0.03794  std=0.06626  frac_correct=80.0%
+
+========================================================================
+FAMILY 2 — CROWDED-TRADE EXHAUSTION
+========================================================================
+
+[I1a] Trapped positioning IC (train, settlement bars)
+  Signal                        ret_1h   ret_4h   ret_8h
+  trapped_score               +0.06759 +0.02549 +0.02744
+  joint_extreme               -0.10431 -0.02498 -0.01707
+
+[I1b] Trapped positioning at 1m level
+  trapped_score               +0.04686 +0.05165 +0.02216
+  joint_extreme               -0.02761 -0.03346 -0.02513
+
+[I1c] Permutation test: trapped_score vs ret_8h (settlement bars)
+  IC=+0.02744  p=0.3485  +0.9s
+
+[I1d] Joint extreme IC (fund × basis aligned)
+  IC(1h, all 1m)=-0.03998  p=0.0005  -3.6s
+  IC(8h, settle) =-0.01707  p=0.8175
+
+[I2] Extreme funding regime: IC by funding + basis quintile (train)
+  (Only when funding is in top/bottom 10% — true crowding events)
+  Extreme funding events: 204 of 1095 settlements (18.6%)
+  ret_1h: fund_rank IC=-0.17983  basis_z IC=-0.11914  joint IC=-0.07726
+  ret_4h: fund_rank IC=+0.01380  basis_z IC=+0.06852  joint IC=+0.21834
+  ret_8h: fund_rank IC=-0.01255  basis_z IC=-0.00351  joint IC=+0.09522
+
+[I3] Breakeven analysis (settlement-level, 8h horizon)
+  sigma_8h = 1.2816%  IC_breakeven = 0.0978
+  Best IC found (across funding signals) = 0.02245
+  Ratio = 0.230x  (need 1.0x to break even at taker costs)
+  At MAKER costs: IC_bk = 0.0587
+
+[I4] Breakeven analysis (1m level, basis_z, 1h horizon)
+  sigma_1h = 0.4487%  IC_breakeven = 0.2793
+  IC(basis_z, ret_1h) = 0.01351
+  Ratio = 0.048x
+
+========================================================================
+SUMMARY — MECHANISM-DRIVEN SIGNALS
+========================================================================
+  Signal                               Best IC  Horizon   p-val  vs BEven
+  Basis dislocation (basis_z)         -0.01351       1h  0.5100     0.048x
+  Basis at settlement (basis_z)       +0.06243       8h  0.4065     0.638x
+  Funding pct_rank                    -0.02245       8h  0.4705     0.230x
+  Trapped positioning                 +0.02744       8h  0.3485     0.281x
+  Joint extreme (fund x basis)        -0.01707       8h  0.8175     0.175x

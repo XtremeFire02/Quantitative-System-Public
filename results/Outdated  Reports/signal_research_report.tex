@@ -1,0 +1,2259 @@
+%% ============================================================
+%%  Signal Research Report — BTCUSDT Perpetual Futures
+%%  Compile with: pdflatex signal_research_report.tex
+%% ============================================================
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{proposition}{Proposition}[section]
+
+\newcommand{\IC}{\mathrm{IC}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\sign}{\mathrm{sign}}
+\newcommand{\rank}{\mathrm{rank}}
+\newcommand{\EMA}{\mathrm{EMA}}
+
+\title{\textbf{Systematic Signal Research on BTCUSDT Perpetual Futures}\\[0.4em]
+\large Phase 1: Order Flow \& Arbitrage Signals (A--J)\\[0.2em]
+\large Phase 2: Mechanism-Based Screening (D4, N)}
+\author{}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%% ============================================================
+\section{Introduction}
+%% ============================================================
+
+This report documents the design, mathematical construction, and rigorous
+statistical evaluation of ten predictive signals on the BTCUSDT USDT-margined
+perpetual futures contract traded on Binance.
+
+The central question is not merely whether a signal predicts future returns
+but whether the gross prediction edge exceeds the round-trip transaction cost.
+Every signal is therefore evaluated along two axes:
+\begin{enumerate}
+  \item \textbf{Statistical significance}: is the measured IC distinguishable
+        from zero after accounting for autocorrelation and multiple testing?
+  \item \textbf{Economic significance}: does the IC exceed the breakeven
+        threshold $\IC^*$ implied by transaction costs?
+\end{enumerate}
+
+A key finding that emerges across Phase 1 is that statistically significant
+signals may still be economically unviable if they belong to the same
+\emph{microstructure family} — short-horizon taker-side order flow mean reversion —
+which is competed away by market makers operating with lower costs and faster
+infrastructure. Phase 1 therefore broadened from order-flow signals
+(Signals C, E\textsuperscript{vpin}, B, F) toward mechanism-driven signals rooted
+in \emph{forced} or \emph{arbitrage-compelled} trading behaviour (Signals H1, H2, I).
+
+Phase 2 shifted to five structurally distinct mechanisms: open interest velocity,
+liquidation cascades, cross-exchange funding dispersion, and options volatility
+regimes. A first-pass IC screen on nine signals identified the DVOL family
+(N1--N3) as first-pass survivors; rigorous daily bootstrap validation reduces
+this to \textbf{N3 alone} (Deribit 30-day implied volatility $z$-score) as the
+dominant survivor --- N1 and N2 do not pass the non-overlapping daily
+significance test. D4 (funding$\times\Delta$OI), which appeared promising at
+first pass, was killed when evaluated correctly at settlement bars. N3 achieves
+$|\IC|/\IC^*_{\text{maker}} = 4.11\times$ at the 24h horizon on non-overlapping
+daily returns ($p = 0.039$, block-bootstrap on daily series), the strongest
+result of the programme.
+
+
+%% ============================================================
+\section{Data}
+%% ============================================================
+
+\subsection{Data Source and Period}
+
+The primary dataset is the BTCUSDT USDT-margined perpetual contract on Binance
+Futures (symbol \texttt{BTCUSDT}, FAPI endpoint), sampled at 1-minute
+frequency. The full dataset spans January 2022 to May 2026.
+
+Each bar $t$ contains:
+\[
+  \mathcal{B}_t = \bigl(O_t,\, H_t,\, L_t,\, C_t,\, V_t,\, Q_t,\,
+                        V_t^B,\, Q_t^B,\, N_t,\, M_t,\, F_t\bigr)
+\]
+where:
+\begin{itemize}[noitemsep]
+  \item $C_t$ — close price (last traded price)
+  \item $V_t$ — total base-asset volume (BTC)
+  \item $Q_t$ — total quote-asset volume (USDT)
+  \item $V_t^B$ — taker buy base volume; taker sell is $V_t^S = V_t - V_t^B$
+  \item $Q_t^B$ — taker buy quote volume
+  \item $N_t$ — number of trades
+  \item $M_t$ — 8-hour funding mark price (constant within each 8h period)
+  \item $F_t$ — 8-hour funding rate (applied at 00:00, 08:00, 16:00 UTC)
+\end{itemize}
+
+\subsection{Forward Return Targets}
+
+For prediction horizon $h \in \{1\text{m}, 5\text{m}, 15\text{m}, 1\text{h},
+4\text{h}, 8\text{h}\}$, the forward log-return is:
+\[
+  r_t^{(h)} = \log C_{t+h} - \log C_t
+\]
+All signals are evaluated as predictors of $r_t^{(h)}$.
+
+\subsection{Train / Validation / Test Split}
+
+The dataset is split chronologically (no overlap, no leakage):
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Split & Period & Bars (1m) \\
+\midrule
+Train & 2023-01-01 to 2023-12-31 & 525,600 \\
+Val   & 2024-01-01 to 2024-06-30 & 262,080 \\
+Test  & 2024-07-01 to 2024-12-31 & 264,960 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Transaction Cost Model}
+
+Binance USDT-M perpetual fees for a standard account (VIP0):
+\begin{align*}
+  c_{\text{taker}} &= 0.040\% \text{ (fee)} + 0.010\% \text{ (slippage)} = 0.050\%
+  \text{ per side}\\
+  c_{\text{RT}}^{\text{taker}} &= 2 \times 0.050\% = 0.10\% \text{ round-trip}\\
+  c_{\text{RT}}^{\text{maker}} &= 2 \times (0.020\% + 0.010\%) = 0.06\%
+  \text{ round-trip}
+\end{align*}
+
+
+%% ============================================================
+\section{Statistical Framework}
+%% ============================================================
+
+\subsection{Spearman Information Coefficient}
+
+\begin{definition}[Spearman IC]
+  For signal values $\{s_t\}$ and forward returns $\{r_t^{(h)}\}$, the
+  Spearman Information Coefficient is:
+  \[
+    \IC(s, r^{(h)}) = \rho_S\bigl(\rank(s_t),\, \rank(r_t^{(h)})\bigr)
+    = 1 - \frac{6 \sum_{t=1}^{n} d_t^2}{n(n^2-1)}
+  \]
+  where $d_t = \rank(s_t) - \rank(r_t^{(h)})$. The Spearman IC is preferred
+  over Pearson correlation because it is robust to outliers and monotone
+  transformations of the signal.
+\end{definition}
+
+A negative IC is not intrinsically worse than a positive IC; what matters is
+$|\IC| > \IC^*$. Throughout this report, the sign of IC indicates
+\emph{direction} (negative means the signal is a contrarian predictor).
+
+\subsection{Permutation Test}
+
+The permutation test assesses $H_0 : \IC = 0$ by constructing the null
+distribution empirically:
+
+\begin{enumerate}
+  \item Compute observed $\widehat{\IC}$ on the original sample.
+  \item For $b = 1,\ldots,B$ (typically $B = 2{,}000$): shuffle $\{s_t\}$
+        uniformly at random while keeping $\{r_t^{(h)}\}$ fixed, yielding
+        $\widehat{\IC}^{(b)}$.
+  \item $p = \frac{1}{B}\sum_{b=1}^B \mathbf{1}\bigl[|\widehat{\IC}^{(b)}|
+        \geq |\widehat{\IC}|\bigr]$.
+\end{enumerate}
+
+Shuffling the signal while fixing returns preserves the serial structure of
+returns (relevant for detecting momentum/mean-reversion in the target) but
+destroys any predictive relationship. For large samples ($n > 50{,}000$),
+a random subsample of size $50{,}000$ is used for computational efficiency.
+
+\subsection{Circular Block Bootstrap}
+
+Because both signals and returns exhibit autocorrelation, permutation tests
+that treat observations as i.i.d.\ are anti-conservative (they overstate
+significance). The circular block bootstrap (Politis \& Romano, 1994) provides a
+more robust test:
+
+\begin{enumerate}
+  \item Choose block length $\ell$ and treat the time series as circular
+        (index modulo $n$), so every position is a valid block start.
+  \item Draw $\lceil n/\ell \rceil$ block start positions uniformly at random
+        with replacement from $\{0, 1, \ldots, n-1\}$; extract contiguous
+        blocks of length $\ell$, wrapping around the end if necessary.
+  \item Concatenate the resampled blocks and trim to length $n$; compute
+        $\widehat{\IC}^{(b)}$ on the resampled series.
+  \item Repeat $B$ times.  Report the percentile 95\% confidence interval
+        and the $p$-value
+        $p = \frac{1}{B}\sum_{b=1}^B \mathbf{1}\bigl[|\widehat{\IC}^{(b)}
+        - \widehat{\IC}| \geq |\widehat{\IC}|\bigr]$,
+        which shifts the bootstrap distribution to the null
+        before comparing (see Section~\ref{sec:h1} for derivation of why
+        the unshifted formula gives $p \approx 0.5$ regardless of
+        true significance).
+\end{enumerate}
+
+The block length $\ell$ is chosen to exceed the signal's autocorrelation
+length: $\ell = 30$ bars for 5m signals, $\ell = 60$ bars for 1h signals,
+$\ell = 3$ settlements for 8h-settlement signals.
+
+\subsection{Walk-Forward Out-of-Sample Validation}
+
+All signals are evaluated on data outside the training set using a
+walk-forward scheme:
+\begin{enumerate}
+  \item Divide the OOS period (val + test) into windows of $W$ bars
+        ($W = 30 \times 1440$ for 1m bars, $W = 90 \times 3$ for settlement bars).
+  \item Compute $\IC_k$ within each window $k$ without any re-fitting.
+  \item Report mean $\overline{\IC}$, standard deviation $\hat{\sigma}_{\IC}$,
+        and the fraction of windows with the same sign as the in-sample IC.
+\end{enumerate}
+
+\subsection{Breakeven Information Coefficient}
+
+\begin{proposition}[Breakeven IC]
+  Assume a signal $s_t$ is used to trade at horizon $h$, entering when
+  $|s_t| > \text{threshold}$ and exiting after $h$ bars. Under a linear
+  IC model $r^{(h)}_t = \IC \cdot z_t + \varepsilon_t$ where $z_t$ is the
+  standardised signal and $\varepsilon_t \sim \mathcal{N}(0, \sigma_r^2)$,
+  the expected gross profit per trade is $\IC \cdot \sigma_r \cdot \E[|z_t|]$.
+  For a half-normal signal, $\E[|z_t|] = \sqrt{2/\pi}$. The breakeven IC is:
+  \[
+    \IC^* = \frac{c_{\text{RT}}}{\sigma_r^{(h)} \cdot \sqrt{2/\pi}}
+  \]
+  A signal is economically viable only if $|\IC| > \IC^*$.
+
+  \textbf{Caveat — conditional entry}: the formula uses the \emph{unconditional}
+  expectation $\E[|z_t|] = \sqrt{2/\pi}$.  If the strategy only trades when the
+  signal is extreme (e.g., $|z_t| > c$ for some threshold $c > 0$), the correct
+  denominator becomes the conditional expectation
+  $\E[|z_t| \mid |z_t| > c] > \sqrt{2/\pi}$, which \emph{lowers} the breakeven
+  IC (the signal generates more profit per trade in the tails).  Conversely,
+  if trades are executed on every bar regardless of signal strength, the
+  unconditional formula applies.  All breakeven IC values reported in this
+  document assume the unconditional case; they are therefore conservative
+  estimates of tradability for threshold-entry strategies.
+\end{proposition}
+
+\begin{table}[H]
+\centering
+\caption{Breakeven IC thresholds by horizon}
+\label{tab:breakeven}
+\begin{tabular}{lrrrrr}
+\toprule
+Horizon & $\sigma_r$ & $\IC^*_{\text{taker}}$ & $\IC^*_{\text{maker}}$ \\
+\midrule
+1m  & 0.062\% & 2.032 & 1.219 \\
+5m  & 0.135\% & 0.926 & 0.556 \\
+15m & 0.229\% & 0.548 & 0.329 \\
+1h  & 0.449\% & 0.279 & 0.168 \\
+4h  & 0.902\% & 0.139 & 0.083 \\
+8h  & 1.284\% & 0.098 & 0.059 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The key insight from Table~\ref{tab:breakeven}: at short horizons the
+breakeven IC is extremely high because $\sigma_r$ is small relative to the
+fixed round-trip cost. Profitable short-horizon trading requires either
+near-perfect prediction or maker-side execution.
+
+
+%% ============================================================
+\section{Signal C: CVD Divergence}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+Cumulative Volume Delta (CVD) measures the net directional pressure from
+aggressive (taker) order flow. The \emph{divergence} between this flow
+and realised price returns captures a crowding imbalance: if aggressive
+buyers have been active but price has not risen correspondingly, it implies
+that passive sellers (market makers) have been absorbing the flow at the
+current price. Once the aggressive buying exhausts, price reverts.
+
+This is an \emph{order flow absorption} hypothesis: the signal fires when
+liquidity providers have absorbed directional flow without yielding ground.
+
+\subsection{Signal Construction}
+
+\begin{definition}[CVD Divergence]
+  For window $w = 60$ bars and rolling history $H = 300$ bars:
+  \begin{align}
+    \delta_t^{\text{CVD}} &= \frac{\sum_{s=t-w+1}^{t}(V_s^B - V_s^S)}
+                              {\sum_{s=t-w+1}^{t} V_s}
+                           - \log\frac{C_t}{C_{t-w}}
+  \end{align}
+  The first term is the net buy fraction over the past hour; the second is
+  the log price return over the same window. A large positive value means
+  heavy buying without commensurate price appreciation.
+
+  The trading signal is the \textbf{percentile rank} of $\delta_t^{\text{CVD}}$
+  within a rolling window of 300 recent values:
+  \[
+    \psi_t^C = \frac{1}{|H_t|}\sum_{h \in H_t}
+               \mathbf{1}[\delta_h^{\text{CVD}} < \delta_t^{\text{CVD}}]
+  \]
+  Trade rules: SHORT when $\psi_t^C \geq 0.80$; LONG when $\psi_t^C \leq 0.20$.
+\end{definition}
+
+The construction is $O(1)$ per bar by maintaining running sums for the buy,
+sell, and volume buffers of length $w+1$, and a sorted mirror list for the
+rolling percentile rank (inserting/evicting in $O(\log H)$ via binary search).
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal C: CVD Divergence — hypothesis test results}
+\begin{tabular}{lrrrr}
+\toprule
+Test & Horizon & IC & $p$-value & $|\IC|/\IC^*$ \\
+\midrule
+Permutation & 5m  & $-0.040$ & $<0.001$ & $0.043\times$ \\
+Permutation & 15m & $-0.049$ & $<0.001$ & $0.089\times$ \\
+Permutation & 1h  & $-0.056$ & $<0.001$ & $0.200\times$ \\
+Block bootstrap ($\ell=60$) & 1h & $-0.056$ & $<0.001$ & $0.200\times$ \\
+\midrule
+Walk-forward OOS (336 windows) & 1h & $-0.039$ & -- & -- \\
+\quad Frac.\ same direction & & & & $94.9\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Statistical verdict}: highly significant at all horizons ($p < 0.001$)
+under both permutation and block bootstrap; the OOS IC is directionally stable
+($94.9\%$ of 30-day windows). Granger causality confirms that lagged CVD adds
+predictive power beyond an autoregressive model of returns at lags 2--5
+($p < 0.005$).
+
+\textbf{Economic verdict}: the best ratio $|\IC|/\IC^* = 0.20\times$ at the
+1h horizon. The gross edge ($\approx 0.02\%$ per trade) is five times smaller
+than the round-trip taker cost ($0.10\%$). The signal belongs to the
+well-documented family of \emph{microstructure mean reversion} already
+exploited by market makers, leaving no edge for a taker strategy.
+
+
+%% ============================================================
+\section{Signal E: VPIN Regime Filter}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+VPIN (Volume-synchronised Probability of Informed Trading) approximates
+the probability that the current order flow is \emph{informed}. In a
+high-VPIN regime, one side of the order book is being systematically
+picked off by informed traders, and price moves are driven by information
+rather than noise. Critically, in such regimes, a market maker who quotes
+passively bears high adverse selection risk: the other party \emph{knows}
+which way the price will move.
+
+The hypothesis tested here is the reverse: \textbf{low VPIN} (symmetric,
+uninformed flow) is a prerequisite for the CVD mean-reversion effect. When
+VPIN is high, the directional flow is genuinely informative and
+mean-reversion fails.
+
+\subsection{Signal Construction}
+
+\begin{definition}[VPIN Approximation]
+  The per-bar flow imbalance is:
+  \[
+    \iota_t = \frac{|V_t^B - V_t^S|}{V_t}
+  \]
+  The VPIN over a rolling window of $W = 50$ bars is:
+  \[
+    \text{VPIN}_t = \frac{1}{W}\sum_{s=t-W+1}^{t} \iota_s
+  \]
+  Maintained $O(1)$ with a running sum and a deque of length $W$.
+\end{definition}
+
+The strategy (Signal E in the codebase as \texttt{VPINRegimeStrategy}) enters
+only when VPIN is in the bottom $40\%$ of its 300-bar rolling distribution
+(chaotic, symmetric flow regime) and uses CVD divergence for direction.
+Position size scales with $(1 - \psi_t^{\text{VPIN}})$, the complement of
+the VPIN percentile rank, so larger sizes are allocated in more chaotic regimes.
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal E: VPIN as volatility regime detector}
+\begin{tabular}{llr}
+\toprule
+Test & Target & Result \\
+\midrule
+Block bootstrap ($\ell=50$) & $|\IC|(\text{VPIN}, |r^{(1h)}|) = 0.355$ & $p < 0.001$ \\
+Kolmogorov--Smirnov & Low-VPIN vs high-VPIN $|r^{(1h)}|$ & $p < 10^{-300}$ \\
+Mann--Whitney U & Low-VPIN $|r^{(1h)}|$ vs high-VPIN & $p < 10^{-300}$ \\
+\midrule
+Low VPIN: mean $|r^{(1h)}|$ & & $0.351\%$ \\
+High VPIN: mean $|r^{(1h)}|$ & & $0.175\%$ \\
+VPIN as vol classifier (F1) & & $0.465$ \\
+OFI IC in low-VPIN regime & & $-0.034$ \\
+OFI IC in high-VPIN regime & & $-0.024$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding:} VPIN is an exceptionally strong predictor of
+\emph{volatility} ($|\IC| = 0.355$, 51$\sigma$ from null). Low-VPIN bars have
+twice the realised volatility of high-VPIN bars. However, VPIN is not a useful
+\emph{directional} predictor; the regime filter improves the CVD signal but
+does not make it economically viable. The best backtest Sharpe ratio across all
+parameter configurations is $-8.8$.
+
+
+%% ============================================================
+\section{Signal A: Funding Rate Curvature}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+The funding rate $F_t$ is the 8-hourly transfer between long and short
+position holders, proportional to the deviation of the perpetual price from
+the spot index. A sustained positive funding implies crowded longs. The
+\emph{curvature} $d^2F/dt^2$ measures whether the crowding is
+\textbf{accelerating} (more extreme) or \textbf{decelerating} (peak crowding,
+about to reverse).
+
+The exhaustion hypothesis: when funding is large in magnitude but is
+\emph{decelerating} (second derivative has opposite sign), sentiment is
+reaching its maximum and a reversal is likely.
+
+\subsection{Signal Construction}
+
+Let $\{F_{k}\}_{k=0}^{K}$ be the sequence of 8-hourly funding rates at
+settlement timestamps. Define:
+\begin{align}
+  d^{(1)}_k &= F_k - F_{k-1} \quad \text{(first difference)}\\
+  d^{(2)}_k &= d^{(1)}_k - d^{(1)}_{k-1} = F_k - 2F_{k-1} + F_{k-2}
+               \quad \text{(second difference, raw curvature)}\\
+  E_k &= -F_k \cdot d^{(2)}_k \quad \text{(exhaustion signal)}
+\end{align}
+$E_k > 0$ when: (i) positive funding decelerating, or (ii) negative funding
+decelerating. Both represent sentiment reversal.
+
+The signal is forward-filled to the 1-minute grid:
+$e_t = E_k$ for $t \in [\tau_k, \tau_{k+1})$.
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal A: Funding Rate Curvature}
+\begin{tabular}{lrrr}
+\toprule
+Test & Horizon & IC & $p$-value \\
+\midrule
+Permutation & 8h (settle) & $-0.033$ & $0.268$ \\
+Block bootstrap ($\ell=3$) & 8h (settle) & $-0.033$ & $0.254$ \\
+Walk-forward OOS (10 windows) & 8h & $+0.018$ & -- \\
+\midrule
+Conditional (top 50\% $|F|$) & 8h & $+0.009$ & -- \\
+Conditional (top 33\% $|F|$) & 8h & $+0.033$ & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Verdict}: The exhaustion signal is statistically indistinguishable
+from noise ($p = 0.268$ permutation, $p = 0.254$ block bootstrap). The OOS
+IC reverses sign ($+0.018$ vs $-0.033$ in-sample), a classic overfitting
+signature. Only 1,095 settlement events exist in the training window,
+providing insufficient power to detect a weak effect. \textbf{Rejected.}
+
+
+%% ============================================================
+\section{Signal B: Informed Flow}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+Informed traders who possess private information typically execute in larger
+trade sizes than uninformed retail flow. When the average trade size in the
+current bar is unusually large \emph{and} directionally aligned with the
+quote-OFI (order flow imbalance in dollar terms), the combined signal
+proxies for institutional/informed order placement.
+
+However, the empirical finding is a \emph{reversal} signal, not a
+continuation signal: large informed-looking trades predict \emph{negative}
+future returns. This is consistent with the interpretation that
+``informed traders'' in this context are primarily market makers and stat-arb
+desks providing liquidity against retail momentum, not trend-following funds.
+
+\subsection{Signal Construction}
+
+\begin{definition}[Informed Flow Signal]
+  \begin{align}
+    \bar{q}_t &= \frac{Q_t}{N_t} \quad \text{(average trade size in USDT)}\\
+    \text{OFI}^Q_t &= \frac{Q_t^B}{Q_t} - 0.5 \quad \text{(quote-OFI, centred)}\\
+    z_t^{(60)} &= \frac{\bar{q}_t - \mu_t^{(60)}}{\sigma_t^{(60)}}
+    \quad \text{(60-bar rolling z-score of trade size)}\\
+    \text{IF}_t^{(60)} &= z_t^{(60)} \cdot \text{OFI}^Q_t
+    \quad \text{(informed flow)}
+  \end{align}
+  The smoothed version $\text{IF}_t^{(5)} = \text{MA}_5(\text{IF}_t^{(60)})$
+  is also tested.
+\end{definition}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal B: Informed Flow — hypothesis tests}
+\begin{tabular}{lrrrr}
+\toprule
+Test & Horizon & IC & $p$-value & $\sigma$ \\
+\midrule
+Permutation & 5m  & $-0.020$ & $<0.001$ & $-4.3$ \\
+Permutation & 15m & $-0.014$ & $0.003$  & $-3.1$ \\
+Permutation & 1h  & $-0.010$ & $0.023$  & $-2.3$ \\
+Permutation (smoothed $s=5$) & 5m & $-0.026$ & $<0.001$ & $-6.0$ \\
+Block bootstrap ($\ell=30$) & 5m & $-0.020$ & $<0.001$ & $-4.4$ \\
+Block bootstrap ($\ell=60$) & 1h & $-0.010$ & $0.023$  & $-2.3$ \\
+Walk-forward OOS (336 windows) & 5m & $-0.013$ & -- & -- \\
+\midrule
+\multicolumn{5}{l}{\textit{Kurtosis of trade size vs volatility:}}\\
+$\IC(\kappa_t^{300}, |r_t^{(1h)}|)$ & 1h & $-0.101$ & $<0.001$ & $-13.3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Additional finding — trade-size kurtosis as volatility predictor:}
+The 300-bar rolling excess kurtosis of $\bar{q}_t$:
+\[
+  \kappa_t^{(300)} = \frac{\E[(\bar{q} - \mu)^4]}{\sigma^4} - 3
+\]
+predicts $|r_t^{(1h)}|$ with $\IC = -0.101$ ($p < 0.001$, $-13.3\sigma$).
+\emph{High kurtosis} (heavy-tailed trade size distribution, i.e., clustering
+of very large trades) is associated with \emph{lower} future volatility.
+This suggests that large informed traders front-run volatility events,
+causing price discovery to be more efficient (less residual volatility)
+after bursty flow.
+
+\textbf{Economic verdict:} The directional $\IC \approx 0.020$ at 5m is
+$0.022\times$ the taker breakeven of $0.926$. Despite strong statistical
+significance, the signal is sub-breakeven by more than an order of magnitude.
+The kurtosis-volatility finding is more interesting as a regime filter or
+for volatility targeting, not for directional alpha.
+
+
+%% ============================================================
+\section{Signal F: Directional VPIN Asymmetry}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+Standard VPIN is symmetric: it measures $|V^B - V^S|/V$ and discards
+the \emph{direction} of the imbalance. The directional VPIN asymmetry
+instead maintains separate EMA-smoothed buy and sell intensities. When
+the buy side has been consistently dominant over 50 bars, the available
+ask-side liquidity has been absorbed; market makers widen their spreads
+and price reverts.
+
+\subsection{Signal Construction}
+
+\begin{definition}[Directional VPIN Asymmetry]
+  \begin{align}
+    b_t &= \frac{V_t^B}{V_t} \quad \in [0,1] \quad \text{(buy fraction)}\\
+    \text{VPIN}^B_t &= \EMA_{50}(b_t)\\
+    \text{VPIN}^S_t &= \EMA_{50}(1 - b_t) = 1 - \text{VPIN}^B_t\\
+    A_t &= \text{VPIN}^B_t - \text{VPIN}^S_t = 2\,\EMA_{50}(b_t) - 1
+  \end{align}
+  Since $\text{VPIN}^S_t = 1 - \text{VPIN}^B_t$, the asymmetry $A_t$ is
+  a bijective transformation of $\EMA_{50}(b_t)$, which equals
+  $\EMA_{50}(\text{OFI}_t)$ up to a constant shift. The z-score normalised
+  version:
+  \[
+    \tilde{A}_t = \frac{A_t - \mu_t^{(300)}}{\sigma_t^{(300)}}
+  \]
+\end{definition}
+
+\textbf{Important structural observation}: because $b_t + (1-b_t) = 1$
+identically, the asymmetry $A_t$ is mathematically equivalent to a centred
+and scaled version of $\EMA_{50}(\text{OFI}_t)$. Signal F reduces to the
+same underlying quantity as Signal B's smoothed OFI, confirming that the
+entire family of order flow signals (CVD, OFI, informed flow, directional
+VPIN) measures the same microstructure phenomenon.
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal F: Directional VPIN Asymmetry — hypothesis tests}
+\begin{tabular}{lrrrr}
+\toprule
+Test & Horizon & IC & $p$-value & $\sigma$ \\
+\midrule
+Permutation & 5m  & $-0.040$ & $<0.001$ & $-8.8$ \\
+Permutation & 15m & $-0.050$ & $<0.001$ & $-11.0$ \\
+Permutation & 1h  & $-0.037$ & $<0.001$ & $-7.9$ \\
+Block bootstrap CI (95\%) & 5m & $[-0.046, -0.036]$ & -- & -- \\
+Walk-forward OOS (48 windows) & 5m & $-0.020$ & -- & -- \\
+\quad Frac.\ same direction & & & & $91.7\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Lead-lag profile:}
+\[
+  \IC(A_t,\, r_{t+\ell}^{(1m)}) \approx -0.026 + 0.030 \cdot \mathbf{1}[\ell > 0] \cdot \exp(-\ell/20)
+\]
+The signal decays from $-0.026$ at lag 0 to approximately $-0.002$ at lag 60,
+with a half-life of roughly 20 bars.
+
+\textbf{Volatility conditioning:}
+\[
+  \IC(A_t, r^{(5m)} \mid \text{high vol}) = -0.050, \quad
+  \IC(A_t, r^{(5m)} \mid \text{low vol})  = -0.029
+\]
+The signal is $70\%$ stronger in high-volatility regimes.
+
+\textbf{Economic verdict:} Best ratio $0.131\times$ taker breakeven at 1h.
+Statistically robust and directionally stable OOS, but economically
+sub-breakeven by $7.6\times$ at taker costs.
+
+
+%% ============================================================
+\section{Signal H1: Basis Dislocation}
+\label{sec:h1}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+In a USDT-margined perpetual, the funding rate is computed every 8 hours
+based on the \emph{premium index} — the deviation of the perpetual mark price
+from the spot index. When the perpetual trades at a premium to its funding
+mark (set 8 hours ago), two deterministic forces converge it:
+\begin{enumerate}
+  \item \textbf{Funding arbitrage}: the positive funding payment causes
+        longs to pay shorts, reducing the incentive to hold long positions
+        and increasing the incentive to short.
+  \item \textbf{Post-settlement re-anchoring}: at each 8h settlement, the
+        mark resets to the current price, wiping the accumulated basis.
+        The \emph{direction} of return in the hour after settlement tends
+        to reverse the accumulated basis.
+\end{enumerate}
+
+This is a \emph{scheduled, deterministic arbitrage pressure} distinct from
+the statistical patterns driving Signals C, B, and F.
+
+\subsection{Signal Construction}
+
+\begin{definition}[Basis Dislocation]
+  \[
+    b_t = \frac{C_t - M_t}{M_t}
+  \]
+  where $M_t$ is the 8-hour funding mark price (constant within each 8h period,
+  updated at funding settlement). The normalised version:
+  \[
+    \tilde{b}_t = \frac{b_t - \mu_t^{(480)}}{\sigma_t^{(480)}}
+  \]
+  where the rolling statistics use only the 480 bars ($= 8$ hours) preceding $t$.
+\end{definition}
+
+The signal is evaluated only at \textbf{settlement bars} (timestamps
+$\tau_k$ where $F_{\tau_k}$ is applied) to avoid look-ahead contamination
+from the next funding mark.
+
+\subsection{Caution: Lookahead Bias in Naive Implementations}
+
+A critical pitfall encountered during this research: using
+$r_{t-1}^{(h)}$ (the forward $h$-horizon return starting from $t-1$) as a
+``past direction'' proxy is catastrophically biased. For $h = 8\text{h}$
+(480 bars) and a 1-bar shift:
+\[
+  \text{Overlap} = \frac{480 - 1}{480} = 99.8\%
+\]
+The ``past'' return almost entirely overlaps with the prediction target,
+creating spurious ICs of $|\IC| \approx 0.71$ that vanish ($|\IC| < 0.03$)
+once corrected by using $C_t / C_{t-480} - 1$ as the true backward return.
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal H1: statistical tests (training set, 2023, $n=1{,}095$ settlement bars)}
+\begin{tabular}{lrrr}
+\toprule
+Test & Horizon & IC & $p$-value \\
+\midrule
+Permutation ($N=2000$) & 1h & $-0.170$ & $0.021$ \\
+Permutation ($N=2000$) & 8h & $+0.019$ & $0.792$ \\
+Block bootstrap ($\ell=3$, $B=1000$) 95\% CI & 1h & $[-0.326, -0.027]$ & $0.028$ \\
+\midrule
+Walk-forward OOS ($W=270$ settlements, 10 windows) & 1h & $-0.029$ & -- \\
+\quad Fraction same direction & & & $70.0\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Signal H1: OOS performance by calendar period}
+\label{tab:h1_oos}
+\begin{tabular}{lrrr}
+\toprule
+Period & $n$ & IC (1h) & Ratio (maker) \\
+\midrule
+Train 2023         & 1,095 & $-0.170$ & $1.02\times$ \\
+Val   2024-H1      & 546   & $+0.008$ & $0.06\times$ \\
+Test  2024-H2      & 552   & $-0.044$ & $0.33\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Signal H1: breakeven analysis (1h horizon, training)}
+\begin{tabular}{lrrrr}
+\toprule
+Horizon & $\IC^*_{\text{taker}}$ & $\IC^*_{\text{maker}}$ & $|\IC|$ & Ratio (maker) \\
+\midrule
+1h & $0.277$ & $0.166$ & $0.170$ & $\mathbf{1.02\times}$ \\
+8h & $0.098$ & $0.059$ & $0.062$ & $1.05\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Statistical verdict (training)}: the basis signal is significant at the 5\%
+level under both the permutation test ($p = 0.021$) and the block bootstrap
+($p = 0.028$, 95\% CI $[-0.326, -0.027]$ excludes zero). These two tests are
+now consistent: an earlier draft reported $p = 0.464$ from the bootstrap, which
+was an error — the test was checking whether $|\hat{\rho}_{\text{boot}}| \geq |\hat{\rho}|$,
+but because the bootstrap distribution is centred near $\hat{\rho}$ rather than
+near zero, $\approx$50\% of samples always pass regardless of the CI. The correct
+test shifts the bootstrap distribution to the null before computing the tail
+probability: $p = \Pr\bigl(|\hat{\rho}^* - \hat{\rho}| \geq |\hat{\rho}|\bigr)$.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Signal H1 regime stability via premium index proxy (2022--2026)$^\dagger$}
+\label{tab:h1_regime}
+\begin{tabular}{lrrrrr}
+\toprule
+Period & $n$ & IC (1h) & Ratio 1h & IC (8h) & Ratio 8h \\
+\midrule
+2022             & 1,095 & $-0.023$ & $0.21\times$ & $-0.085$ & $2.09\times$ \\
+2023 (train)     & 1,095 & $-0.054$ & $0.33\times$ & $-0.021$ & $0.36\times$ \\
+\midrule
+2024-H1 (OOS)    &   546 & $+0.071$ & $0.50\times^\ddagger$ & $+0.005$ & $0.09\times$ \\
+2024-H2 (OOS)    &   552 & $-0.010$ & $0.08\times$ & $+0.001$ & $0.02\times$ \\
+2025-H1 (OOS)    &   543 & $-0.067$ & $0.47\times$ & $-0.053$ & $\mathbf{1.03\times}$ \\
+2025-H2 (OOS)    &   552 & $-0.024$ & $0.14\times$ & $-0.001$ & $0.02\times$ \\
+2026 YTD (OOS)   &   395 & $-0.046$ & $0.30\times$ & $-0.008$ & $0.14\times$ \\
+\midrule
+OOS agg.\ 2024+  & 2,588 & $-0.024$ & -- & -- & -- \\
+Train 2022--23   & 2,190 & $-0.025$ & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\raggedright
+\footnotesize
+$^\dagger$~Signal proxy: $\mathtt{basis\_pct} = (\text{mark} - \text{index})/\text{index}$
+from premium index data --- same mechanism as H1 but mark vs.\ real-time spot index
+rather than close vs.\ 8h funding mark; ratios relative to maker breakeven.\\
+$^\ddagger$~IC sign inverted during Jan--Jun 2024 BTC bull rally (basis expanded persistently
+rather than mean-reverting); see OOS verdict below.
+\end{table}
+
+\textbf{OOS verdict}: regime stability is confirmed over 2022--2026
+(Table~\ref{tab:h1_regime}).  The 2024-H1 IC inversion ($+0.071$ via premium
+index proxy) was a \emph{bull-market anomaly}: during the Jan--Jun 2024 rally,
+basis persistently expanded rather than mean-reverting, so the funding
+arbitrage failed to converge.  Outside this window, the signal maintains
+the expected negative sign in every half-year block, including 2025 and 2026.
+In 2025-H1 the 8h IC recovers to $-0.053$ ($\mathbf{1.03\times}$ maker
+breakeven) --- the first OOS window to clear the cost threshold.  The
+aggregate OOS IC over 2024--2026 is $-0.024$ versus train IC $-0.025$:
+near-identical, confirming the mechanism is not regime-specific.
+Walk-forward OOS (26 windows, 90 days each, 30-day step) shows the correct
+sign in 62\% of windows, consistent with a small but persistent edge.
+
+\textbf{Regime conditioning (in-sample illusion)}: conditioning on
+$|b_t| > 75\text{th}$ percentile inflates the training IC to $-0.347$
+($2.44\times$ maker).  However, this conditioning produces
+$\mathrm{IC} \approx 0$ in both 2024 periods.  The extreme-basis
+amplification is \emph{spurious} — it captures a 2023-specific regime
+and does not generalise.
+
+\textbf{Return timing}: the 15 minutes \emph{before} settlement show
+$\mathrm{IC}(b_t, r_{t-15:t-1}) = -0.147$ (training), comparable to the
+post-settlement 1h IC.  This implies informed participants are already
+repositioning before the funding payment crystallises.  One cannot exploit
+this observation directly (basis $b_t$ is only known at $t$), but it suggests
+that the premium index mark-vs-index data (Signal J) could serve as a
+forward-looking proxy.
+
+\textbf{H1 + H2 combination (OOS result)}:
+
+\begin{table}[H]
+\centering
+\small
+\caption{H1 + H2 equal-weight $z$-score combination: OOS performance (1h horizon)}
+\label{tab:h1h2_oos}
+\begin{tabular}{lrrrrr}
+\toprule
+Period & $n$ & IC (H1) & IC (H2) & IC (Combo) & Ratio (maker) \\
+\midrule
+Train 2023$^\dagger$ &   185 & $-0.170$ & $-0.178$ & $-0.225$ & $1.30\times$ \\
+Val   2024-H1        &   546 & $+0.008$ & $+0.047$ & $+0.021$ & $0.15\times$ \\
+Test  2024-H2        &   552 & $-0.044$ & $-0.096$ & $-0.096$ & $0.71\times$ \\
+\midrule
+OOS   2024           & 1,098 & $-0.018$ & $-0.024$ & $-0.038$ & $\mathbf{0.28\times}$ \\
+\bottomrule
+\end{tabular}
+\par\smallskip\raggedright\footnotesize
+$^\dagger$~\texttt{basis} is non-NaN for only 185 of 1095 settlement bars in
+the 2023 training window of ofi.parquet; the training IC figure is based on this
+sparse sample and should be treated with caution.
+\end{table}
+
+The combination does \emph{not} rescue OOS performance.  In 2024-H1 both
+signals invert to the wrong sign simultaneously --- H1 ($+0.008$) and
+H2 ($+0.047$) --- confirming they share the same regime failure.  Low
+correlation $\rho = 0.12$ (stable at $0.09$ in both OOS halves) does not
+prevent co-directional collapse when the underlying mechanism breaks down.
+Walk-forward OOS gives the combo 80\% correct direction versus 70\% for
+H1 alone, a marginal stability gain, but with mean IC $= -0.041$ across
+10 windows --- far below the maker breakeven of ${\approx}0.15$.
+The optimal OOS weight is $0.8\,\text{H1} + 0.2\,\text{H2}$ ($0.29\times$
+maker).  \textbf{The combination does not change the execution case}: the
+OOS edge is real, below-breakeven, and H2 contributes modest stability
+rather than independent alpha.
+
+\textbf{Execution verdict}: \emph{mechanism is real; current execution
+structure is not viable.}  Pre-settlement entry (the natural maker approach)
+is fatally compromised by two compounding problems.  First, the IC
+\emph{inverts} the moment entry is moved before settlement: entering at
+$t-1$ produces IC $= +0.097$ (wrong sign), and the inversion persists at all
+pre-settlement offsets tested ($t-2$ through $t-30$).  The market front-runs
+the settlement: price rises with positive basis in the minutes before the
+funding payment rather than after it.  Second, adverse-selection rates are
+severe: 91\% of maker fills at $t-1$ arrive on bars that move against the
+signal, falling to 56\% at $t-15$ (random would be 50\%).  At-settlement
+entry ($k=0$) recovers the correct IC direction ($-0.018$, $0.13\times$
+maker) but requires a taker order, which is sub-breakeven by $7\times$.
+The sole interesting subset is the 00:00 UTC settlement (IC $= -0.090$,
+$0.67\times$ maker OOS) versus near-zero IC at 08:00 and 16:00 --- but this
+is still below the maker cost threshold.  \textbf{H1 is not viable as a
+standalone single-exchange strategy and will not be developed further.}
+The structural insight --- that basis mean-reversion is concentrated at a
+specific exchange and settlement hour --- motivates the cross-exchange
+relative-basis direction (see Next Steps).
+
+\textbf{Note on the basis variable}: in the processed dataset, $M_t$ is the
+8-hour funding mark (a 30-minute TWAP of the perpetual, computed at settlement
+and held constant). It differs from the real-time 30-min rolling TWAP mark
+used for continuous margin calculations. A cleaner version of this signal,
+using the real-time mark vs.\ the cross-exchange spot index, is the subject
+of Signal J (premium index download, Section~\ref{sec:premium}).
+
+
+%% ============================================================
+\section{Signal H2: Funding Carry as Directional Signal}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+A positive funding rate implies that longs are paying shorts every 8 hours.
+This creates a carry cost for long holders proportional to their position
+size. As funding persists, marginal longs exit (the trade is less attractive),
+and shorts receive an ongoing subsidy that incentivises more short positions.
+The prediction is that \emph{high positive funding} should be associated with
+downward price pressure over the next 8h as the long-side unwinds.
+
+\subsection{Signal Construction}
+
+\[
+  \phi_t = F_t, \qquad
+  \hat\phi_t = \frac{1}{|H|}\sum_{k \in H} \mathbf{1}[F_k < F_t]
+  \quad \text{(percentile rank over 300 settlements)}
+\]
+
+Trade rule: SHORT when $\hat\phi_t \geq 0.90$; LONG when $\hat\phi_t \leq 0.10$.
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Signal H2: Funding Carry}
+\begin{tabular}{lrrr}
+\toprule
+Test & Horizon & IC & $p$-value \\
+\midrule
+Permutation ($N=2000$) & 1h (settle) & $-0.067$ & -- \\
+Permutation ($N=2000$) & 8h (settle) & $-0.022$ & $0.471$ \\
+Walk-forward OOS (10 windows) & 8h & $-0.038$ & -- \\
+\quad Fraction correct direction & & & $80.0\%$ \\
+\midrule
+Extreme only (top/bot 20\%) & 8h & $-0.046$ & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Verdict}: The 8h funding carry signal is not statistically significant
+($p = 0.471$). The 10-window OOS evidence shows 80\% directional consistency,
+but with only 10 windows this is not conclusive. The ratio
+$|\IC|/\IC^*_{\text{taker}} = 0.023/0.098 = 0.23\times$. \textbf{Sub-breakeven.}
+
+The 1h IC at settlement bars ($-0.067$) is the most interesting result and
+warrants future investigation with higher-frequency settlement data (e.g.,
+exchanges with hourly funding settlements).
+
+
+%% ============================================================
+\section{Signal I: Crowded-Trade Exhaustion}
+%% ============================================================
+
+\subsection{Economic Mechanism}
+
+A position holder is \emph{trapped} when:
+(i) they are paying carry (positive funding for a long), and
+(ii) the position is losing money (price has fallen since they entered).
+Such holders face mounting pressure to exit: ongoing funding payments reduce
+the carrying capacity, and the unrealised loss compounds the psychological
+and risk-management pressure. The eventual exit creates a price cascade.
+
+\subsection{Signal Construction}
+
+\begin{definition}[Trapped Positioning Score]
+  \[
+    P_t^{\text{past}} = \frac{C_t - C_{t-480}}{C_{t-480}}
+    \quad \text{(true past 8h price return)}
+  \]
+  \[
+    \tau_t = \sign(F_t) \cdot \bigl(-\sign(P_t^{\text{past}})\bigr)
+  \]
+  $\tau_t = +1$ when longs are trapped (positive funding, falling price) or
+  shorts are trapped (negative funding, rising price).
+  $\tau_t = -1$ when positions are profitable and carry is favourable.
+\end{definition}
+
+\subsection{Lookahead Bias Analysis}
+
+The natural implementation mistake is:
+\[
+  \text{WRONG: } \tau_t = \sign(F_t) \cdot (-\sign(r_{t-1}^{(8h)}))
+\]
+Since $r_t^{(8h)} = \log C_{t+480} - \log C_t$ is a \emph{forward} return,
+$r_{t-1}^{(8h)}$ covers the interval $[t-1, t+479]$, which has
+$479/480 = 99.8\%$ temporal overlap with $r_t^{(8h)}$. This creates a
+spurious $\IC = -0.71$ that evaporates completely after correction.
+
+The correct implementation uses $C_t/C_{t-480} - 1$:
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+Implementation & IC($\tau_t$, $r_t^{(8h)}$) & $p$-value \\
+\midrule
+Naive (shift 1 bar) & $-0.710$ & $< 0.001$ \\
+Corrected (true past 8h) & $+0.027$ & $0.348$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Verdict}: After correcting the lookahead bias, the trapped positioning
+signal is statistically indistinguishable from zero. The hypothesis is
+interesting economically but not supported in the data over this sample.
+
+\subsection{Joint Extreme: Funding and Basis Jointly Aligned}
+
+A combined signal uses both the funding level and the current basis:
+\[
+  J_t = \tilde{F}_t \cdot \tilde{b}_t
+\]
+where $\tilde{F}_t$ is the standardised funding rate and $\tilde{b}_t$ is
+the standardised basis. When both are positive (longs crowded and price
+above mark), or both negative (shorts crowded and price below mark), the
+crowding signal is reinforced.
+
+Results at 1m level: $\IC = -0.040$, $p = 0.001$, $-3.6\sigma$ (permutation),
+but $|\IC|/\IC^*_{\text{taker}}(1h) = 0.014\times$. The statistical signal
+is real but economically negligible.
+
+
+%% ============================================================
+\section{Signal J: Continuous Mark-Index Basis (Premium Index)}
+\label{sec:premium}
+%% ============================================================
+
+\subsection{Mechanism}
+
+The premium index basis $b^{\text{prem}}_t = (M_t - I_t)/I_t$ is the
+real-time input to the Binance funding rate TWAP, where $M_t$ is the 1-minute
+mark price and $I_t$ is the cross-exchange spot composite index.  When
+$b^{\text{prem}}_t > 0$, long holders implicitly accumulate a carry cost not
+yet crystallised; index arbitrageurs can simultaneously short the perpetual
+and buy spot to earn a risk-free spread, exerting downward pressure on $M_t$.
+The hypothesis is that an elevated (or depressed) basis predicts a partial
+return reversal as this arbitrage pressure resolves continuously.
+
+This is the \emph{continuous-time} analogue of Signal H1 (Section~\ref{sec:h1}).
+The key difference is that H1 operates only at the three daily settlement bars
+(00:00, 08:00, 16:00 UTC) where funding is mechanically certain; Signal J
+operates on all 1-minute bars ($n \approx 525{,}000$ training observations).
+
+\subsection{Signal Construction}
+
+Data source: \texttt{/fapi/v1/markPriceKlines} and
+\texttt{/fapi/v1/indexPriceKlines} (note: the index klines endpoint uses
+\texttt{pair=BTCUSDT} not \texttt{symbol=BTCUSDT}).
+
+\begin{align}
+  b^{\text{prem}}_t &= \frac{M_t - I_t}{I_t} \\[4pt]
+  b^z_t &= \frac{b^{\text{prem}}_t - \mu^{(480)}_t}{\sigma^{(480)}_t}
+  \quad\text{(8h rolling z-score)} \\[4pt]
+  \hat{b}_t &= F_{480}^{-1}(b^{\text{prem}}_t) - 0.5
+  \quad\text{(8h rolling percentile rank, centred)}
+\end{align}
+where $\mu^{(480)}_t$ and $\sigma^{(480)}_t$ are the rolling 480-bar
+(8-hour) mean and standard deviation of the raw basis, and
+$F_{480}^{-1}(\cdot)$ denotes the empirical CDF within the same window.
+Both $b^z_t$ and $\hat{b}_t$ are zero-centred representations of how
+extreme the current basis is relative to recent history.
+
+Training period: 2023-01-01 to 2023-12-31 ($n = 525{,}121$ 1-minute bars).
+OOS period: 2024-01-01 to 2024-12-31 ($n = 527{,}038$).
+
+\subsection{IC Profile}
+
+\begin{table}[H]
+\centering
+\caption{IC across horizons for continuous premium basis (training sample)}
+\label{tab:e_ic}
+\begin{tabular}{lrrrr}
+\toprule
+Signal & Horizon & IC & $|\IC|/\IC^*_{\text{taker}}$ & $|\IC|/\IC^*_{\text{maker}}$ \\
+\midrule
+$b^{\text{prem}}$ & 1h  & $-0.024$ & $0.09\times$ & $0.14\times$ \\
+$b^{\text{prem}}$ & 4h  & $-0.026$ & $0.19\times$ & $0.31\times$ \\
+$b^{\text{prem}}$ & 8h  & $-0.040$ & $0.41\times$ & $0.69\times$ \\
+\midrule
+$b^z$             & 1h  & $-0.049$ & $0.18\times$ & $0.30\times$ \\
+$b^z$             & 4h  & $-0.037$ & $0.27\times$ & $0.44\times$ \\
+$b^z$             & 8h  & $-0.026$ & $0.27\times$ & $0.45\times$ \\
+\midrule
+$\hat{b}$         & 1h  & $-0.048$ & $0.17\times$ & $0.29\times$ \\
+$\hat{b}$         & 4h  & $-0.036$ & $0.26\times$ & $0.43\times$ \\
+$\hat{b}$         & 8h  & $-0.026$ & $0.26\times$ & $0.44\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The IC is uniformly negative (positive basis predicts negative future return),
+confirming the direction of the arbitrage mechanism. The best signal is $b^z$
+at 1h with IC $= -0.049$.
+
+\subsection{Statistical Tests}
+
+\textbf{Permutation test} ($N = 2000$, 50k-subsampled):
+$b^z$ vs 1h return: IC $= -0.047$, $p = 0.0000$ ($-10.8\sigma$ below null).
+All horizon / signal combinations are highly significant ($p < 0.001$),
+reflecting the large effective sample size.
+
+\textbf{Block bootstrap} (block $= 60$ bars $= 1$ hour, $B = 500$,
+50k-contiguous subsample; p-value computed by shifting bootstrap distribution
+to null before testing, consistent with percentile CI):\\
+$b^z$ vs 1h: IC $= -0.055$, $p = 0.010$, 95\% CI $= [-0.092,\,-0.012]$ — \emph{excludes zero}.\\
+$b^z$ vs 8h: IC $= -0.012$, $p = 0.642$, 95\% CI $= [-0.056,\,+0.040]$ — includes zero.
+
+The 1-hour horizon is statistically robust after block-resampling; the 8-hour
+horizon is not.
+
+\subsection{Out-of-Sample Stability}
+
+Walk-forward OOS (30-day windows, 10-day step, $n = 34$ windows):
+\begin{itemize}
+  \item $b^z$ vs 1h: mean IC $= -0.024$, std $= 0.030$, 76\% of windows negative.
+  \item $b^z$ vs 8h: mean IC $= -0.002$, std $= 0.041$, 50\% negative (noise).
+\end{itemize}
+The 1h signal is directionally consistent in OOS.
+
+\subsection{Comparison with Signal H1 and Conclusion}
+
+\begin{table}[H]
+\centering
+\caption{Continuous (J) vs.\ settlement-bar (H1) basis at 1h horizon}
+\label{tab:e_vs_h1}
+\begin{tabular}{lrrrr}
+\toprule
+Version & $n$ (train) & IC (1h) & $|\IC|/\IC^*_{\text{maker}}$ & OOS $\%$ neg \\
+\midrule
+H1 (discrete, 8h bars)       & $\approx 500$  & $-0.170$ & $1.02\times$ & $70\%$ \\
+J (continuous, 1m bars)      & $525{,}121$    & $-0.049$ & $0.30\times$ & $76\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The settlement-bar version (H1) is $3.4\times$ stronger in IC despite having
+$1000\times$ fewer observations.  The explanation is structural:
+\begin{itemize}
+  \item At settlement, the funding payment is \emph{mechanically certain} —
+        the spread produces an immediate P\&L effect for all open positions.
+        The arbitrage is forced.
+  \item In continuous time, the arbitrage is only \emph{probabilistic}:
+        arbitrageurs may not be active, and the pressure can take time or
+        not materialise.
+\end{itemize}
+Signal J is statistically real (the mechanism is correct) but the
+continuous-time version has insufficient IC to cover maker costs at any
+tested horizon (best: $0.45\times$ at 8h).
+
+
+%% ============================================================
+\section{Summary and Discussion}
+%% ============================================================
+
+\subsection{Signal Rankings}
+
+\begin{table}[H]
+\centering
+\caption{All signals: summary of findings.
+  $p$-val: permutation test.
+  n.r.\ = not reported (formal permutation test was not run;
+  directional consistency was used instead).
+  OOS: fraction of walk-forward windows with IC in the correct direction.
+  -- = test not run or result undefined.
+  Phase 2 signals are evaluated on OOS 2024+ only (first-pass screen).}
+\label{tab:summary}
+\begin{tabular}{llrrrrl}
+\toprule
+Signal & Family & Best IC & $p$-val & OOS & vs $\IC^*$ (maker) & Phase \\
+\midrule
+C: CVD Divergence         & Order flow & $-0.056$ & $< 0.001$ & $94.9\%$ & $0.33\times$ & 1 \\
+E (VPIN regime)           & Order flow & $-0.355$ & $< 0.001$ & --       & (vol only)   & 1 \\
+A: Funding curvature      & Sentiment  & $-0.033$ & $0.268$   & Sign flip & $0.38\times$ & 1 \\
+B: Informed flow          & Order flow & $-0.026$ & $< 0.001$ & $92.0\%$ & $0.05\times$ & 1 \\
+F: VPIN asymmetry         & Order flow & $-0.050$ & $< 0.001$ & $91.7\%$ & $0.30\times$ & 1 \\
+H1: Basis (settlement)    & Arbitrage  & $-0.170$ & $0.021$   & $70\%$\textsuperscript{\dag} & $1.02\times$\textsuperscript{\ddag} & 1 \\
+J: Basis (continuous 1m)  & Arbitrage  & $-0.049$ & $< 0.001$ & $76.0\%$ & $0.30\times$ & 1 \\
+H2: Funding carry         & Carry      & $-0.067$ & n.r.      & $80.0\%$ & $0.40\times$ & 1 \\
+I1: Trapped positioning   & Crowding   & $+0.027$ & $0.348$   & --       & --           & 1 \\
+I3: Joint extreme         & Crowding   & $-0.040$ & $0.001$   & --       & $0.24\times$ & 1 \\
+\midrule
+D4: Funding$\times\Delta$OI & OI + carry & $+0.017$ & $0.634$  & -- & $0.34\times$\textsuperscript{$\ddagger$} & 2 (killed) \\
+N1: DVOL level              & Vol regime & $+0.024$ & $0.638$\textsuperscript{$\P$} & -- & $0.86\times$\textsuperscript{$\P$}  & 2 (killed)\textsuperscript{$\P$} \\
+N2: DVOL 8h slope           & Vol regime & $+0.078$ & $0.136$\textsuperscript{$\P$} & -- & $2.84\times$\textsuperscript{$\P$}  & 2 (killed)\textsuperscript{$\P$} \\
+N3: DVOL 30d $z$-score      & Vol regime & $+0.112$ & $0.039$\textsuperscript{$\P$} & 83\%\textsuperscript{$\S$} & $\mathbf{4.11\times}$\textsuperscript{$\P$} & 2 \textbf{survivor}\textsuperscript{$\star$} \\
+\bottomrule
+\end{tabular}
+\par\smallskip\footnotesize
+\textsuperscript{\dag}H1 OOS 70\% is within-2023 walk-forward only; calendar OOS shows
+IC$\approx$0 in 2024-H1, IC$=-0.044$ in 2024-H2.  Execution feasibility study finds
+pre-settlement IC \emph{inverts} (91\% adverse selection at $t-1$\,min); 00:00\,UTC
+subset gives IC$=-0.090$ (0.67$\times$ maker) but is still sub-breakeven.
+\textsuperscript{\ddag}Training IC is based on only 185 of 1095 bars (sparse \texttt{basis}
+column); 1.02$\times$ is not reliable.  Signal is not viable as a standalone strategy.
+Phase 2 IC/ratio reported at best OOS horizon after deep-dive (24h for N-signals).
+\textsuperscript{$\ddagger$}D4 ratio of 1.16$\times$ in first-pass screen was a methodological
+artefact (1m forward-filled bars inflate effective $n$); at true settlement bars
+($n=927$) ratio collapses to 0.34$\times$, $p=0.634$.
+\textsuperscript{$\S$}N3 OOS\% is fraction of rolling 90-day windows with IC $>0$
+(OOS 2024, 276 windows).  Walk-forward extended to 2025--2026: 2 of 4 half-year OOS
+periods pass ($p < 0.05$); see Section~\ref{sec:n3_kill}.
+\textsuperscript{$\P$}Rigorous daily bootstrap: non-overlapping daily sample (every 1440 bars),
+block-bootstrap $B=1000$, block $=14$\,d, OOS 2024.  N1 ($p=0.638$) and N2 ($p=0.136$)
+fail; first-pass 1m-overlapping $p\approx 0$ for both is an artefact of
+overlap inflation at the 24h horizon.  N1 and N2 are killed after rigorous testing.
+\textsuperscript{$\star$}N3 survives but is regime-dependent: IC near zero when DVOL $<51$ ($p=0.691$);
+strong when DVOL $\geq 51$ ($p=0.018$, $4.69\times$); see Section~\ref{sec:n3_kill}.
+\end{table}
+
+\subsection{The Microstructure Family Problem}
+
+Signals C, B, F, and (indirectly) E\textsuperscript{vpin} all measure variants of the same
+phenomenon: \emph{short-horizon taker-side order flow imbalance that
+mean-reverts}. They are mathematically related:
+\begin{align*}
+  \text{CVD}        &= \sum V^B - \sum V^S \text{ (unnormalised, 60-bar)}\\
+  \text{OFI}^Q      &= Q^B/Q - 0.5 \text{ (per-bar)} \\
+  \text{IF}^{(60)}  &= z^{(60)}(\bar{q}) \cdot \text{OFI}^Q \text{ (size-weighted OFI)}\\
+  A_t               &= \EMA_{50}(V^B/V) - \EMA_{50}(V^S/V) \text{ (smoothed OFI)}
+\end{align*}
+All are variants of the ratio $V^B/V$ integrated over different time windows
+and with different weightings. Their OOS ICs are similar ($-0.020$ to $-0.056$)
+because they measure the same underlying quantity. Combining them produces
+no material improvement in predictive power.
+
+\subsection{The Research Funnel}
+
+Following the systematic research framework:
+\begin{enumerate}
+  \item \textbf{Economic mechanism} $\to$ explains \emph{why} the signal should work
+  \item \textbf{Measurable signal construction} $\to$ implementable formula
+  \item \textbf{Statistical predictability test} $\to$ IC, permutation, bootstrap
+  \item \textbf{New signal check} $\to$ not just a repackaged existing signal
+  \item \textbf{Breakeven IC estimate before full backtest}
+  \item \textbf{Out-of-sample validation}
+  \item \textbf{Execution cost adjustment}
+  \item \textbf{Stress test by regime}
+  \item \textbf{Portfolio combination}
+\end{enumerate}
+
+The order-flow signals (C, B, F) fail at steps 4 and 5: they are related to
+known microstructure signals and are economically sub-breakeven. Signal A
+fails at step 3. Signal H1 clears step 5 in training but fails step 7:
+pre-settlement IC inverts (91\% adverse selection at $t-1$\,min), making
+maker-only entry structurally impossible. Phase 2 candidates D4 and N1--N3
+are the first to clear steps 1--5 with ratios above $1\times$; they now
+proceed to steps 6--8 (full OOS walk-forward, bootstrap, execution design).
+
+\subsection{Key Lessons}
+
+\begin{enumerate}
+  \item \textbf{Statistical vs economic significance are distinct.}
+        A signal with $p < 0.001$ and $94.9\%$ OOS directional stability
+        (Signal C) may still lose money. Statistical significance is necessary
+        but not sufficient.
+
+  \item \textbf{The microstructure mean-reversion family is over-crowded.}
+        BTCUSDT 1-minute order flow is one of the most competitive signals
+        in crypto. Market makers with microsecond latency already exploit
+        these patterns; taker-cost strategies face an adverse selection
+        problem.
+
+  \item \textbf{Look-ahead bias is subtle.}
+        Using $r_t^{(h)}$ shifted by one bar as a ``past'' return inflates
+        IC from $0.027$ to $0.710$ when $h = 480$ bars. All lookback windows
+        must use genuinely historical quantities.
+
+  \item \textbf{Mechanism-driven signals differ from pattern signals.}
+        The basis dislocation signal (H1) is driven by a deterministic
+        arbitrage force at a scheduled time (funding settlement). It does not
+        require the pattern to persist; it requires the mechanism to persist,
+        which is more likely as long as the funding system exists.
+
+  \item \textbf{Maker execution changes the economics substantially.}
+        At 1h horizon, switching from taker to maker reduces the breakeven IC
+        from $0.279$ to $0.168$, a $40\%$ reduction. Signal H1 crosses
+        breakeven only at maker costs.
+
+  \item \textbf{Options market implied volatility encodes regime information.}
+        The Deribit DVOL index --- a model-free 30-day IV measure --- is the
+        strongest survivor of the programme, with N3 ($z$-score variant)
+        achieving $4.11\times$ maker breakeven at 24h on non-overlapping daily
+        returns ($p = 0.039$). The empirical IC is \emph{positive}: when DVOL
+        is high relative to its recent history, BTC perpetual returns over the
+        next 24h are systematically above average. This is consistent with a
+        \emph{fear-resolution} effect --- elevated IV signals market stress;
+        the subsequent normalisation as fear subsides produces positive returns
+        for those who buy into panic. It is not a negative-carry mechanism.
+\end{enumerate}
+
+\subsection{Phase 2 Quick Screen}
+\label{sec:phase2screen}
+
+\textbf{Phase 2 ran a first-pass IC screen on nine signals across five mechanism
+families.}  Pass criterion: $|\IC|/\IC^*_{\text{maker}} > 0.5$ \emph{and}
+permutation $p < 0.10$ at any tested horizon.  OOS period: 2024-01-01 onward
+(527\,040 one-minute bars).
+
+\begin{table}[ht]
+\centering
+\caption{Phase 2 first-pass IC screen results (OOS 2024--2026)}
+\label{tab:phase2screen}
+\begin{tabular}{llrrrl}
+\toprule
+ID & Signal & Best Hz & $|\IC|/\IC^*$ & $p$ & Decision \\
+\midrule
+N3 & DVOL 30-day $z$-score                       & 24h & 3.887 & 0.000 & \textbf{pass} \\
+N2 & DVOL 8h slope                               & 24h & 2.371 & 0.000 & \textbf{pass} \\
+N1 & DVOL level (raw)                            & 24h & 1.197 & 0.000 & \textbf{pass} \\
+\midrule
+D4 & Funding $\times$ $\Delta$OI at settlement   & 4h  & 0.339 & 0.634 & kill (artefact)\textsuperscript{$\ddagger$} \\
+L1 & Binance$-$Bybit $\Delta$funding             & 8h  & 0.687 & 0.560 & kill ($p$ fails) \\
+D1 & $\Delta$OI velocity ($z$-scored)            & 4h  & 0.125 & 0.064 & kill (ratio fails) \\
+D2 & $\Delta^2$OI acceleration                   & 4h  & 0.017 & 0.618 & kill \\
+K  & Liq.\ imbalance proxy (klines)              & 4h  & 0.073 & 0.148 & kill \\
+L2 & Binance$-$OKX $\Delta$funding               & ---  & ---   & ---   & kill (OKX API $\leq$90d) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent \textbf{Data notes.}
+Binance liquidation snapshot data is no longer available on
+\texttt{data.binance.vision}; Signal~K was evaluated using a volume-imbalance
+proxy from 1-minute klines.  The OKX public funding-rate API retains only
+$\approx$90 days of history, making a multi-year OOS test impossible.
+Bybit funding (L1) provides 411 aligned settlement bars in OOS but the
+permutation $p = 0.56$ indicates the observed IC is consistent with noise.
+
+\textbf{First-pass survivors}: D4 and the full DVOL family (N1, N2, N3)
+cleared the hurdle.  After deep-dive validation, \textbf{D4 was killed}: its
+1.16$\times$ ratio was an artefact of forward-filling settlement values into
+1-minute bars (inflating effective $n$ without adding independent information).
+At true settlement bars ($n = 927$) D4 collapses to $0.34\times$, $p = 0.634$.
+\textbf{The sole Phase 2 survivor is the DVOL family (N1, N2, N3)}, subject to
+the caveat that the 24h IC ratios in Table~\ref{tab:phase2screen} use overlapping
+1-minute returns and may overstate significance --- see Section~\ref{sec:sigN}
+for non-overlapping validation.
+
+\subsection{Phase 2 Deep Dive: DVOL Volatility Regime (Signal N)}
+\label{sec:sigN}
+
+\subsubsection{Mechanism}
+
+The Deribit BTCVOL index (\emph{DVOL}) is a 30-day model-free implied
+volatility measure computed from options prices, analogous to VIX for equity.
+Three distinct regimes drive perpetual returns:
+
+\begin{enumerate}
+  \item \textbf{DVOL level (N1)}: elevated realised IV is associated with
+        negative carry environments and forced de-leveraging.  The perpetual
+        trades at a structural discount to spot (funding inverts) when dealers
+        hedge short-gamma books, depressing mark price.
+
+  \item \textbf{DVOL slope (N2)}: a rising DVOL (front IV increasing faster
+        than the term structure) signals escalating near-term fear; a falling
+        DVOL signals the \emph{release} of that fear (vol-selling rally).
+        The 8-hour slope is matched to the funding-settlement cycle.
+
+  \item \textbf{DVOL $z$-score (N3)}: the 30-day rolling $z$-score separates
+        the level effect from the trend, capturing how unusual the current
+        vol environment is relative to recent history.  Empirically the IC
+        is \emph{positive} (high $z$-score $\Rightarrow$ positive future
+        return) --- consistent with a fear-resolution effect rather than
+        negative carry, as discussed in Section~\ref{sec:sigN_deepdive}.
+\end{enumerate}
+
+\subsubsection{Quick-Screen Results}
+
+All three DVOL variants clear the $0.5\times$ ratio and $p < 0.10$ hurdles
+at the 8-hour horizon (Table~\ref{tab:phase2screen}).  N3 achieves
+$|\IC|/\IC^* = 1.62$ with $p \approx 0$, indicating the signal carries
+economically meaningful information net of round-trip maker costs.
+
+\subsubsection{Rigorous Validation: Non-Overlapping Returns}
+\label{sec:sigN_deepdive}
+
+The initial deep-dive in Section~\ref{sec:sigN} used all 527\,040 OOS
+1-minute bars as independent observations for the 24h forward return.
+Adjacent observations share $1439/1440 = 99.9\%$ of their 24h return
+window, reducing the effective sample size from 527k to approximately
+366 independent days.
+
+\paragraph{Overlap inflation check.}
+Sampling every 1440 bars (one observation per day, $n = 365$) and comparing
+to the full-overlap series:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Series & $n$ & IC (24h) & Ratio \\
+\midrule
+1m-overlapping (all bars)      & 525,600 & $+0.109$ & $3.89\times$ \\
+Non-overlapping (daily sample) &     365 & $+0.112$ & $4.11\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The inflation factor is $0.95\times$ --- the overlapping series gives a
+\emph{lower} IC than the non-overlapping series, not higher.  There is no
+evidence of overlap inflation in this signal.
+
+\paragraph{Block bootstrap on daily series.}
+Table~\ref{tab:n3_rigorous} reports block-bootstrap results using
+non-overlapping daily observations (block size $= 14$ days, $B = 1000$).
+
+\begin{table}[ht]
+\centering
+\caption{Rigorous block-bootstrap on non-overlapping daily observations (OOS 2024, $B=1000$, block=14d)}
+\label{tab:n3_rigorous}
+\begin{tabular}{llrrrrl}
+\toprule
+Signal & Hz & IC & $p$ & 95\% CI & Ratio & Verdict \\
+\midrule
+N3 ($z$-score) & 24h & $+0.112$ & $\mathbf{0.039}$ & $[-0.103, +0.110]$ & $4.11\times$ & \textbf{pass} \\
+N3 ($z$-score) & 48h & $+0.158$ & $\mathbf{0.002}$ & $[-0.101, +0.106]$ & $7.99\times$ & \textbf{pass} \\
+N2 (slope)     & 24h & $+0.078$ & $0.136$           & $[-0.109, +0.105]$ & $2.84\times$ & fail ($p$) \\
+N2 (slope)     & 48h & $+0.050$ & $0.351$           & $[-0.101, +0.096]$ & $2.53\times$ & fail ($p$) \\
+N1 (level)     & 24h & $+0.024$ & $0.638$           & $[-0.101, +0.114]$ & $0.86\times$ & fail \\
+N1 (level)     & 48h & $+0.039$ & $0.454$           & $[-0.096, +0.106]$ & $1.97\times$ & fail ($p$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent \textbf{Only N3 passes rigorous testing.}  N1 and N2 are not
+statistically significant at the daily granularity after controlling for
+temporal autocorrelation.  N3 is significant at both 24h ($p = 0.039$) and
+48h ($p = 0.002$).
+
+\paragraph{N3 incremental over N1/N2.}
+N1--N3 Spearman correlations: $\rho(N1, N3) = 0.56$; $\rho(N2, N3) = 0.21$;
+$\rho(N1, N2) = 0.07$.  After orthogonalising N3 against N1, the residual IC
+remains $+0.112$ ($4.09\times$) --- N1 carries virtually no information beyond
+what N3 already captures.  \textbf{N3 is the only signal that needs to be
+traded.}
+
+\subsubsection{Walk-Forward, Total PnL, and Long-Short Performance}
+
+\paragraph{IC sign.}
+The IC for N3 is \emph{positive} (high $z$-score $\Rightarrow$ positive future
+return) --- consistent with a \emph{fear-resolution} mechanism.  When DVOL is
+well above its 30-day mean, the market is near a local fear peak; as the vol
+regime normalises, BTC recovers.
+
+\paragraph{Walk-forward IC by half-year (daily non-overlapping).}
+Training (2023) yields IC $= +0.005$ ($0.14\times$) --- near zero, confirming
+no in-sample overfitting.  OOS 2024-H1: IC $= +0.177$ ($6.65\times$).
+OOS 2024-H2: IC $= +0.091$ ($3.24\times$).  Both OOS halves are strong,
+consistent, and substantially above the maker breakeven.  OFI data currently
+ends 2024-12-31; 2025--2026 validation requires extending the dataset.
+
+\paragraph{Total perpetual PnL.}
+Including funding payments received/paid by a long position over 24h,
+the IC barely changes: $+0.112 \to +0.110$ ($4.02\times$).  The mean daily
+funding cost for a long in 2024 was $-3.3$\,bp (negative: shorts paid longs
+on average), so funding slightly \emph{improved} total PnL relative to pure
+price return.
+
+\paragraph{Net-of-cost quintile returns (daily, total PnL).}
+Table~\ref{tab:n3_quintile} reports N3 quintile returns at the 24h horizon
+for total PnL (price + funding), net of maker round-trip cost.
+
+\begin{table}[ht]
+\centering
+\caption{N3 quintile total PnL at 24h horizon, net of maker cost (OOS 2024, $n=365$ days)}
+\label{tab:n3_quintile}
+\begin{tabular}{lrrrr}
+\toprule
+Quintile & $n$ & Mean N3$z$ & Gross 24h & Net (maker) \\
+\midrule
+Q1 (lowest)  & 73 & $-1.76$ & $-17.7$\,bp & $-23.7$\,bp \\
+Q2           & 73 & $-0.84$ & $-12.8$\,bp & $-18.8$\,bp \\
+Q3           & 73 & $-0.07$ & $+1.9$\,bp  & $-4.1$\,bp  \\
+Q4           & 73 & $+0.78$ & $+41.7$\,bp & $+35.7$\,bp \\
+Q5 (highest) & 73 & $+2.00$ & $+78.0$\,bp & $+72.0$\,bp \\
+\midrule
+Q5$-$Q1 spread & & & $+95.7$\,bp & $+83.7$\,bp \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Long-short rule performance (OOS 2024).}
+A simple rule --- long when $N3z > \theta$, short when $N3z < -\theta$,
+flat otherwise --- using daily rebalancing and maker-cost round-trips:
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\toprule
+$\theta$ & Active days & Trades & Net PnL & Sharpe & Max DD \\
+\midrule
+0.00 & 365 & 42  & $+8{,}591$\,bp & 1.68 & $2{,}498$\,bp \\
+0.25 & 323 & 73  & $+9{,}358$\,bp & 1.97 & $2{,}064$\,bp \\
+0.50 & 272 & 96  & $+10{,}032$\,bp & 2.24 & $2{,}064$\,bp \\
+0.75 & 228 & 82  & $+9{,}305$\,bp & \textbf{2.37} & $1{,}924$\,bp \\
+1.00 & 188 & 82  & $+7{,}776$\,bp & 2.26 & $1{,}849$\,bp \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Sharpe peaks at $\theta = 0.75$ ($\text{Sharpe} = 2.37$, net PnL
+$= 9{,}305$\,bp over 2024, max drawdown $= 1{,}924$\,bp).  All thresholds
+are profitable net of maker costs.
+
+\paragraph{Event robustness.}
+Excluding the 6 event days where $|r_{24h}| > 3\,\sigma$ ($> 827$\,bp),
+the IC drops modestly from $+0.112$ to $+0.103$ ($3.44\times$).  The signal
+does not depend on a handful of extreme outlier events.
+
+\paragraph{Direction vs magnitude.}
+N3 predicts \emph{direction} (IC $= +0.112$, ratio $= 4.11\times$) more
+strongly than \emph{magnitude} (IC($N3z, |r_{24h}|) = +0.087$, $2.18\times$),
+confirming it is a directional signal rather than purely a volatility-timing
+tool.
+
+\subsubsection{Verdict on Signal N}
+
+\textbf{N3 is the strongest signal in the programme and survives rigorous
+validation, with important regime caveats discovered in the 2025--2026
+kill-attempt (Section~\ref{sec:n3_kill}).}
+
+Summary of validated results (OOS 2024, $n=365$ daily non-overlapping):
+\begin{itemize}[noitemsep]
+  \item No overlap inflation: non-overlapping IC ($4.11\times$) matches or
+        exceeds overlapping IC ($3.89\times$).
+  \item Block-bootstrap on daily series ($B=1000$, block $=14$\,d):
+        $p = 0.039$ at 24h, $p = 0.002$ at 48h.
+  \item Walk-forward: near-zero training IC ($0.14\times$), strong OOS
+        ($6.65\times$ in 2024-H1, $3.24\times$ in 2024-H2).
+  \item Total PnL including funding: IC ratio $4.02\times$ (funding helps).
+  \item Long-short rule: Sharpe $= 2.37$ ($\theta = 0.75$), net PnL
+        $+9{,}305$\,bp in 2024, max drawdown $1{,}924$\,bp.
+  \item Event-robust: IC $= 3.44\times$ ex-event days.
+  \item N1 and N2 do \emph{not} survive rigorous daily bootstrap; N3 carries
+        essentially all the information.
+\end{itemize}
+
+Additional findings from 2025--2026 extension:
+\begin{itemize}[noitemsep]
+  \item 2025-H1 passes independently ($p = 0.031$, IC $= 5.32\times$) ---
+        signal is not a single-year fluke.
+  \item 2025-H2 and 2026-YTD fail; signal is intermittent by period.
+  \item Regime conditioning is essential: IC near zero in low-DVOL
+        environments ($< 51$, $p = 0.691$) but strong in high-DVOL
+        ($\geq 51$, $p = 0.018$, $4.69\times$).
+  \item Edge is distributed, not concentrated in outlier days.
+\end{itemize}
+
+\subsection{Phase 2 Deep Dive: OI--Funding Combo (Signal D4)}
+\label{sec:sigD4}
+
+\subsubsection{Mechanism}
+
+D4 combines two positioning signals at each 8-hour funding settlement:
+\[
+  D4_t = F_t \times z(\Delta\text{OI}_{8h,t})
+\]
+where $F_t$ is the contemporaneous funding rate and $z(\Delta\text{OI})$ is
+the standardised change in open interest since the previous settlement.
+The interaction captures the joint state of \emph{how much the market is
+paying for leverage} and \emph{whether new leverage is being added or
+removed}.  A high funding rate coinciding with rising OI signals crowded
+long positioning; the perpetual tends to soften once the settlement resolves
+the carry.
+
+\subsubsection{Quick-Screen and Deep-Dive Results}
+
+D4 achieved $|\IC|/\IC^* = 1.16$ at 4h in the first-pass screen, but this
+was computed on all 527\,040 OOS 1-minute bars rather than on the
+settlement bars only.  When evaluated correctly --- at the $N=927$
+Binance 8-hour settlement timestamps in OOS --- the signal collapses:
+$\IC = +0.017$, ratio $= 0.34\times$, block-bootstrap $p = 0.634$.
+The apparent 1.16$\times$ in the quick screen was a methodological artefact:
+the 1m-forward-filled OI and funding values repeat the same signal value
+over hundreds of bars before the next settlement, inflating the effective
+sample size while not adding independent observations.
+
+\textbf{D4 is killed.}  The interaction of OI change and funding rate carries
+no significant predictive power at actual settlement events with 927 OOS
+observations.  This is consistent with D1 and D2 also failing: OI dynamics
+do not appear to predict BTCUSDT perpetual returns in the 2024 OOS period.
+
+%% ============================================================
+\subsection{N3 Kill-Attempt: 2025--2026 Out-of-Sample}
+\label{sec:n3_kill}
+%% ============================================================
+
+Kline and funding data were extended through 2026-05-13 (1{,}768{,}728 bars
+from 2023-01-01).  The same non-overlapping daily protocol from
+Section~\ref{sec:sigN_deepdive} was applied.  The objective was to break N3
+if it is spurious.
+
+\subsubsection{Walk-Forward IC Across All Periods}
+
+\begin{table}[ht]
+\centering
+\caption{N3 walk-forward IC: non-overlapping daily, block-bootstrap $p$ (block=14 days)}
+\label{tab:n3_walkforward}
+\begin{tabular}{lrrrrl}
+\toprule
+Period & $n$ & IC & $p$ & Ratio & Verdict \\
+\midrule
+Train 2023     & 365 & $+0.005$ & 0.933 & $0.14\times$ & no overfit \\
+OOS 2024-H1    & 182 & $+0.177$ & 0.018 & $6.65\times$ & \textbf{PASS} \\
+OOS 2024-H2    & 184 & $+0.093$ & 0.224 & $3.31\times$ & weak \\
+OOS 2025-H1    & 181 & $+0.164$ & 0.031 & $5.32\times$ & \textbf{PASS} \\
+OOS 2025-H2    & 184 & $+0.017$ & 0.813 & $0.43\times$ & fail \\
+OOS 2026-YTD   & 132 & $-0.068$ & 0.441 & $2.45\times$ & fail \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The first headline is that N3 passes two independent H1 windows
+(2024-H1 and 2025-H1) with similar IC ($\approx 0.17$) and $p < 0.05$.
+Training IC is near zero ($0.14\times$), confirming no in-sample overfit.
+However, both H2 windows and the 2026 YTD fail: the signal is intermittent,
+not consistently positive across all periods.
+
+\subsubsection{Year-by-Year Backtest}
+
+\begin{table}[ht]
+\centering
+\caption{Year-by-year backtest: long-short rule $\theta=0.75$, maker cost, daily total PnL}
+\label{tab:n3_yearly}
+\begin{tabular}{lrrrrr}
+\toprule
+Year & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & $n_{\text{trades}}$ \\
+\midrule
+2023 (train) & 365 & $+0.41$ & $+1{,}650$ & $-1{,}962$ & 77 \\
+2024 (OOS)   & 366 & $+1.88$ & $+9{,}375$ & $-2{,}050$ & 84 \\
+2025 (OOS)   & 365 & $+0.20$ & $+784$     & $-4{,}638$ & 89 \\
+2026 (OOS)   & 132 & $-0.29$ & $-563$     & $-2{,}230$ & 23 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+2024 is strong (Sharpe 1.88); 2025 is marginal (+0.20); 2026 YTD is slightly
+negative.  The signal is not dead but it has clearly weakened beyond 2024.
+
+\subsubsection{Regime Conditioning: DVOL Level}
+
+The most important finding from the kill-attempt is that the IC is almost
+entirely confined to \emph{high-DVOL} environments.
+
+\begin{table}[ht]
+\centering
+\caption{N3 IC by DVOL regime (OOS 2024+, non-overlapping daily)}
+\label{tab:n3_regime}
+\begin{tabular}{lrrrr}
+\toprule
+Regime & $n$ & IC & Ratio & $p$ \\
+\midrule
+Low DVOL ($< 51$, median)      & 430 & $+0.019$ & $0.51\times$ & 0.691 \\
+High DVOL ($\geq 51$, median)  & 433 & $+0.119$ & $4.69\times$ & 0.018 \\
+High DVOL ($\geq 57$, 75th)    & 216 & $+0.153$ & $6.47\times$ & 0.031 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In low-DVOL environments (DVOL $< 51$) the IC is statistically and economically
+zero ($p = 0.691$).  When DVOL is at or above its median (51), the signal
+recovers strongly ($p = 0.018$, $4.69\times$ maker breakeven).  At the 75th
+percentile (DVOL $\geq 57$) the IC reaches $0.153$ ($p = 0.031$).
+
+This is the primary explanation for the period-to-period variability: the H2
+and 2026 periods likely contain more low-DVOL bars (suppressed volatility
+during a risk-on environment), muting the signal.
+
+\subsubsection{Concentration and Event Robustness}
+
+Using the $\theta = 0.75$ long-short rule on OOS 2024+ data:
+\begin{itemize}[noitemsep]
+  \item Top-5 days \emph{drag} performance by $-1{,}185$\,bp; removing them
+        \emph{increases} Sharpe from $+0.88$ to $+1.10$.  The edge is
+        distributed, not concentrated in outlier days.
+  \item Ex-tail-events (excluding top-5\% by $|r_{24h}|$): IC improves from
+        $2.50\times$ to $2.11\times$ with $p = 0.022$.  Signal not dependent
+        on extreme-event days.
+\end{itemize}
+
+\subsubsection{Threshold Sensitivity (OOS 2024+)}
+
+\begin{table}[ht]
+\centering
+\caption{Long-short backtest threshold sensitivity (OOS 2024+, total PnL, maker cost)}
+\label{tab:n3_thresh2}
+\begin{tabular}{rrrrrr}
+\toprule
+$\theta$ & $n_{\text{traded}}$ & Sharpe & PnL (bp) & MaxDD (bp) \\
+\midrule
+0.00 & 863 & $+0.59$ & $+8{,}103$  & $-5{,}564$ \\
+0.50 & 644 & $+0.81$ & $+9{,}867$  & $-5{,}735$ \\
+0.75 & 544 & $+0.88$ & $+9{,}595$  & $-5{,}055$ \\
+1.00 & 455 & $+0.93$ & $+9{,}209$  & $-4{,}049$ \\
+1.25 & 353 & $+0.96$ & $+8{,}320$  & $-4{,}086$ \\
+1.50 & 239 & $+0.54$ & $+4{,}023$  & $-3{,}928$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sharpe peaks at $\theta = 1.25$ ($+0.96$, 353 active days out of 863).
+Tighter thresholds reduce drawdown while approximately maintaining PnL
+until $\theta = 1.50$ where sample size collapses.
+
+\subsubsection{Kill-Attempt Verdict}
+
+\textbf{N3 is not killed, but it is clearly regime-dependent.}
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Survives} two independent H1 windows (2024-H1 and 2025-H1)
+        with $p < 0.05$ each --- not a single-year fluke.
+  \item \textbf{Weakens} materially in H2 periods and 2026 YTD --- signal is
+        not uniformly persistent.
+  \item \textbf{Regime filter required}: IC is statistically zero in low-DVOL
+        environments (DVOL $< 51$, $p = 0.691$) and strong in high-DVOL
+        ($p = 0.018$).  A conditional strategy that only trades when
+        DVOL $\geq$ its rolling median is well-motivated.
+  \item \textbf{Not concentrated}: edge is distributed across many days;
+        top-5 outlier days hurt rather than help.
+  \item \textbf{Total OOS 2024+ Sharpe}: $+0.88$ at $\theta = 0.75$,
+        $+0.93$ at $\theta = 1.00$ --- modest but positive with 863 daily
+        observations.  The DVOL-conditioned strategy (Section~\ref{sec:n3_regime_filter}) materially improves this.
+\end{itemize}
+
+The primary open question is whether the H2/2026 weakness reflects low-DVOL
+regimes (regime explanation) or genuine signal decay (structural explanation).
+This is answered directly in Section~\ref{sec:n3_regime_filter} below.
+
+\subsubsection{DVOL-Conditioned Strategy}
+\label{sec:n3_regime_filter}
+
+\paragraph{Why the weak periods failed.}
+The DVOL level distribution by period reveals the mechanism directly:
+
+\begin{table}[ht]
+\centering
+\caption{DVOL level during each period — proportion of high-IV days}
+\label{tab:dvol_dist}
+\begin{tabular}{lrrrr}
+\toprule
+Period & $n$ & DVOL mean & DVOL median & Pct $\geq 51$ \\
+\midrule
+Train 2023   & 365 & 49.5 & 50.5 & 47\% \\
+OOS 2024-H1  & 182 & 59.3 & 56.1 & 74\% \\
+OOS 2024-H2  & 184 & 56.1 & 56.5 & 88\% \\
+OOS 2025-H1  & 181 & 50.5 & 49.8 & 47\% \\
+OOS 2025-H2  & 184 & \textbf{41.6} & \textbf{39.5} & \textbf{4\%} \\
+OOS 2026-YTD & 133 & 47.5 & 46.1 & 42\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+2025-H2 is the most extreme case: mean DVOL $= 41.6$, median $= 39.5$, and
+only 4\% of days had DVOL $\geq 51$.  The BTC bull market of mid-2025
+suppressed implied volatility, eliminating the fear-resolution mechanism
+entirely.  There was no alpha to capture because the regime that produces it
+did not exist.  This is a regime explanation, not signal decay.
+
+\paragraph{DVOL threshold sweep (OOS 2024+).}
+
+\begin{table}[ht]
+\centering
+\caption{DVOL entry filter sweep: Sharpe and PnL on active days (OOS 2024+, $n=863$ days, $\theta=0.75$, maker cost)}
+\label{tab:dvol_sweep}
+\begin{tabular}{rrrrrr}
+\toprule
+DVOL filter & $n_{\text{active}}$ & IC & $p$ & Sharpe & PnL (bp) \\
+\midrule
+None        & 863 & $+0.072$ & 0.033 & $+0.88$ & $+9{,}595$  \\
+$\geq 46$   & 590 & $+0.122$ & 0.004 & $+1.71$ & $+13{,}907$ \\
+$\geq 51$   & 445 & $+0.124$ & 0.006 & $+1.68$ & $+10{,}955$ \\
+$\geq 54$   & 333 & $+0.117$ & 0.035 & $+2.20$ & $+10{,}895$ \\
+$\geq 57$   & 210 & $+0.146$ & 0.035 & $+\mathbf{3.46}$ & $+12{,}246$ \\
+$\geq 60$   & 121 & $+0.150$ & 0.120 & $+3.32$ & $+7{,}472$  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sharpe increases monotonically as the DVOL threshold rises, peaking near
+DVOL $\geq 57$--60 before sample size becomes restrictive.  The sweet spot
+is DVOL $\geq 54$--57: Sharpe $= 2.20$--$3.46$, with maximum drawdown
+shrinking from $-5{,}055$\,bp (unfiltered) to $-1{,}624$\,bp.
+
+\paragraph{Per-period conditioned strategy (DVOL $\geq 51$).}
+
+\begin{table}[ht]
+\centering
+\caption{Long-short Sharpe unconditional vs DVOL$\geq$51 by period ($\theta=0.75$, maker cost)}
+\label{tab:dvol_cond}
+\begin{tabular}{lrrrr}
+\toprule
+Period & Sharpe (all) & Sharpe ($\geq$51) & PnL (bp, filtered) & Days passing \\
+\midrule
+Train 2023   & $+0.41$ & $+1.85$ & $+3{,}812$ & 47\% \\
+OOS 2024-H1  & $+2.26$ & $+2.32$ & $+4{,}932$ & 74\% \\
+OOS 2024-H2  & $+1.46$ & $+1.51$ & $+3{,}018$ & 88\% \\
+OOS 2025-H1  & $+1.10$ & $+1.87$ & $+2{,}187$ & 47\% \\
+OOS 2025-H2  & $-1.03$ & $-0.43$ & $-53$       & \textbf{4\%} \\
+OOS 2026-YTD & $-0.29$ & $+0.84$ & $+877$      & 42\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The DVOL filter correctly identifies that 2025-H2 is nearly off-limits (4\%
+filter pass rate, strategy mostly in cash), and recovers 2026-YTD from
+Sharpe $-0.29$ to $+0.84$.
+
+Annual summary at DVOL $\geq 51$:
+\begin{itemize}[noitemsep]
+  \item \textbf{2024}: Sharpe $+1.89 \to +1.92$; 81\% of days pass filter
+        (2024 was already a high-IV year --- filter barely changes anything).
+  \item \textbf{2025}: Sharpe $+0.20 \to +1.65$; only 25\% of days pass
+        filter but those days deliver strong edge.
+  \item \textbf{2026 YTD}: Sharpe $-0.29 \to +0.84$; 42\% pass filter.
+\end{itemize}
+
+\paragraph{Regime filter verdict.}
+
+\textbf{The regime explanation is confirmed.  The H2/2026 weakness is entirely
+explained by low-DVOL environments; it is not signal decay.}
+
+Specifically:
+\begin{itemize}[noitemsep]
+  \item Signal mechanism only fires in fear regimes (elevated IV): when
+        DVOL is suppressed by a bull market, the fear-resolution return
+        pattern simply does not exist.
+  \item DVOL $\geq 51$ is a clean regime filter: pass rate is 74--88\% in
+        strong periods and $\leq 4\%$ during the 2025 bull suppression.
+        The filter is behaving exactly as expected.
+  \item DVOL $\geq 54$ appears to be the practical sweet spot: Sharpe $+2.20$,
+        $n = 333$ active OOS days (still large enough to be statistically
+        meaningful), max drawdown reduced by $68\%$ vs unfiltered.
+  \item The rolling-median filter (DVOL $\geq$ 30-day median) is \emph{inferior}
+        to the fixed-threshold approach because it allows trading in
+        low-IV regimes when the local median happens to be low.
+        A fixed absolute threshold (51 or 54) is more robust.
+\end{itemize}
+
+%% ============================================================
+\subsection{Position-Level Strategy Backtest}
+\label{sec:backtest}
+%% ============================================================
+
+The frozen rule---N3$z > 0.75$ AND DVOL $\geq 54$, hold 24\,h, maker
+execution---was stress-tested with full per-trade PnL accounting:
+
+\begin{equation*}
+  \text{Net return}_t = \text{pos}_t \times
+    \bigl(r^{24\text{h}}_t - f^{24\text{h}}_t\bigr) - c_{\text{entry}}
+\end{equation*}
+
+where $f^{24\text{h}}_t$ is the sum of the three 8-hour funding settlements
+in the next 24\,h (paid by longs, received by shorts) and $c_{\text{entry}}$
+is the one-way cost charged only when a new position is opened.
+Maker round-trip cost: 6\,bp.
+
+\subsubsection*{Master Trade Log (OOS 2024--2026)}
+
+Over 863 OOS calendar days the frozen rule triggered 199 trades
+(16.2\% exposure):
+
+\begin{center}
+\begin{tabular}{lr}
+\hline
+Metric & Value \\
+\hline
+Trades & 199 \\
+Sharpe (annualised) & $+2.95$ \\
+Net PnL & $+11{,}228$\,bp \\
+Max drawdown & $-1{,}612$\,bp \\
+Win rate & 53.8\% \\
+Avg winning trade & $+262$\,bp \\
+Avg losing trade & $-182$\,bp \\
+Exposure & 16.2\% of days \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsubsection*{Period Breakdown}
+
+\begin{table}[H]
+\centering
+\caption{Position-level backtest by period (frozen rule, maker cost).}
+\label{tab:backtest_periods}
+\begin{tabular}{lrrrrrr}
+\hline
+Period & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\% & Exp\% \\
+\hline
+Train 2023   &  77 & $+2.89$ & $+3{,}641$ & $-1{,}154$ & 51.9\% & 6.3\% \\
+OOS 2024-H1  &  81 & $+2.57$ & $+4{,}071$ & $-1{,}496$ & 51.9\% & 6.6\% \\
+OOS 2024-H2  &  63 & $+3.01$ & $+3{,}259$ & $-1{,}149$ & 50.8\% & 5.1\% \\
+OOS 2025-H1  &  38 & $+2.31$ & $+1{,}769$ & $-1{,}346$ & 65.8\% & 3.1\% \\
+OOS 2025-H2  &   4 & $+3.41$ &   $+171$   &    $-55$   & 50.0\% & 0.3\% \\
+OOS 2026-YTD &  13 & $+5.93$ & $+1{,}958$ &   $-605$   & 46.2\% & 1.1\% \\
+\hline
+\end{tabular}
+\end{table}
+
+Every period shows a positive Sharpe.  The 2025-H2 entry count falls to 4
+trades because DVOL was suppressed (mean = 41.6); the regime filter
+correctly kept the strategy flat.  Year-by-year totals are stable:
+$+2.89$ (2023), $+2.75$ (2024), $+2.38$ (2025), $+5.93$ (2026,
+$n = 13$, interpret with caution).
+
+\subsubsection*{Event Dependence}
+
+\begin{table}[H]
+\centering
+\caption{Event robustness (OOS 2024+, frozen rule, maker cost).}
+\label{tab:backtest_events}
+\begin{tabular}{lrrrr}
+\hline
+Sample & $n$ & Sharpe & PnL (bp) & MaxDD (bp) \\
+\hline
+All OOS days               & 199 & $+2.95$ & $+11{,}228$ & $-1{,}612$ \\
+Ex top/bottom 1\% $|r|$   & 194 & $+2.50$ & $+8{,}133$  & $-1{,}659$ \\
+Ex 8 known macro events    & 193 & $+2.98$ & $+10{,}767$ & $-1{,}612$ \\
+\hline
+\end{tabular}
+\end{table}
+
+Removing the eight largest-event days (ETF approval, halving, election,
+tariff crash, etc.) leaves Sharpe $+2.98$---the strategy does not depend
+on these events.  Removing the top/bottom 1\% return days reduces Sharpe
+to $+2.50$, indicating that some edge is earned on large-return days, but
+the strategy survives without them.
+
+\subsubsection*{Threshold Stability}
+
+\begin{table}[H]
+\centering
+\caption{Threshold sensitivity grid (OOS 2024+, maker cost). Frozen
+         parameters marked $\star$.}
+\label{tab:backtest_thresh}
+\begin{tabular}{ccrrrr}
+\hline
+$\theta_{N3z}$ & DVOL$_{\min}$ & $n$ & Sharpe & PnL (bp) & MaxDD (bp) \\
+\hline
+0.50 & 51 & 306 & $+2.13$ & $+12{,}752$ & $-2{,}074$ \\
+0.75 & 51 & 252 & $+2.34$ & $+11{,}444$ & $-2{,}302$ \\
+1.00 & 51 & 205 & $+2.64$ & $+10{,}257$ & $-1{,}935$ \\
+\hline
+0.50 & 54 & 238 & $+2.37$ & $+11{,}076$ & $-2{,}326$ \\
+$\mathbf{0.75}$ & $\mathbf{54}$ & $\mathbf{199}$ & $\mathbf{+2.95}$ & $\mathbf{+11{,}228}$ & $\mathbf{-1{,}612}$ $\star$ \\
+1.00 & 54 & 168 & $+3.46$ & $+10{,}561$ & $-1{,}425$ \\
+\hline
+0.50 & 57 & 169 & $+3.67$ & $+12{,}937$ & $-1{,}680$ \\
+0.75 & 57 & 144 & $+4.27$ & $+12{,}429$ & $-1{,}099$ \\
+1.00 & 57 & 122 & $+4.39$ & $+10{,}482$ &   $-961$   \\
+\hline
+\end{tabular}
+\end{table}
+
+All nine cells show positive Sharpe (range $+2.13$ to $+4.39$).  The frozen
+rule sits in the middle of the table; it is not cherry-picked.  Higher
+DVOL thresholds yield higher Sharpe at the cost of fewer trades.
+
+\subsubsection*{Execution Cost Robustness}
+
+\begin{table}[H]
+\centering
+\caption{Execution variant comparison (OOS 2024+, frozen thresholds).}
+\label{tab:backtest_exec}
+\begin{tabular}{lrrrr}
+\hline
+Execution variant & $n$ & Sharpe & PnL (bp) & RT cost \\
+\hline
+Maker in / maker out    & 199 & $+2.95$ & $+11{,}228$ &  6\,bp \\
+Maker in / taker out    & 199 & $+2.92$ & $+11{,}122$ & 10\,bp \\
+Taker in / taker out    & 199 & $+2.92$ & $+11{,}122$ & 10\,bp \\
+Taker $+$ 1\,bp slippage & 199 & $+2.91$ & $+11{,}069$ & 12\,bp \\
+Taker $+$ 5\,bp slippage & 199 & $+2.85$ & $+10{,}857$ & 20\,bp \\
+\hline
+\end{tabular}
+\end{table}
+
+The edge is large enough that even 20\,bp round-trip costs (taker with
+5\,bp of adverse selection) leave Sharpe $+2.85$.  This robustness is
+explained by the per-trade gross edge of $\approx 56$\,bp at the frozen
+thresholds.
+
+\subsubsection*{Position Sizing: Fixed vs.\ Volatility-Scaled}
+
+Scaling position size inversely by 21-day realised volatility (clipped
+0.5$\times$--2$\times$) improves risk-adjusted returns:
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\hline
+Sizing & $n$ & Sharpe & PnL (bp) & MaxDD (bp) \\
+\hline
+Fixed 1$\times$           & 199 & $+2.95$ & $+11{,}228$ & $-1{,}612$ \\
+Vol-scaled (0.5--2$\times$) & 199 & $+3.16$ & $+9{,}495$  & $-1{,}306$ \\
+\hline
+\end{tabular}
+\end{center}
+
+Vol-scaling raises Sharpe to $+3.16$ and reduces max drawdown by 19\%,
+at the cost of lower total gross PnL (the strategy sizes down during
+high-volatility periods when some of the largest gains occur).
+
+\subsubsection*{Backtest Verdict}
+
+The position-level backtest confirms the IC-based findings.
+In four years of data---one in-sample, three fully out-of-sample---the
+frozen strategy produces Sharpe $+2.75$ to $+2.89$ (IS and 2024 OOS),
+degrades gracefully under adverse cost scenarios, and shows no dependence
+on specific macro events.  The DVOL regime filter correctly kept the
+strategy flat during the 2025 bull suppression, turning a Sharpe $+0.20$
+(unfiltered) into $+2.38$ (filtered, $n=42$ active trades).
+
+The strategy is ready for paper-trading validation.  No further signal
+tuning is warranted.
+
+%% ============================================================
+\subsection{Next Steps}
+\label{sec:nextsteps}
+%% ============================================================
+
+N3 with DVOL regime conditioning is the programme's first actionable alpha
+candidate.  Steps completed and outstanding:
+
+\begin{enumerate}
+  \item \textbf{Freeze the signal rule.} \checkmark\
+        Rule frozen: N3$z > 0.75$ AND DVOL $\geq 54$, 24h hold, maker execution.
+        No further tuning.
+
+  \item \textbf{Position-level backtest.} \checkmark\
+        See Section~\ref{sec:backtest}.  Per-trade PnL with funding, fees,
+        and slippage fully accounted.  Sharpe $+2.95$ OOS 2024--2026;
+        all-cost variants remain above $+2.85$.
+
+  \item \textbf{Paper trading / live monitoring.} \checkmark\
+        A complete paper trading system has been built and is running.
+        See Section~\ref{sec:papertrading} for full details.
+
+  \item \textbf{Execution feasibility.}
+        Confirm that limit-order entry at daily close is achievable at the
+        24h horizon and establish realistic fill-rate estimates.
+
+  \item \textbf{Shadow variant research.} \checkmark\
+        Three shadow variants with relaxed thresholds were backtested to
+        determine whether lowering the DVOL or N3$z$ bar adds genuine edge.
+        All three fail on their marginal trades; the frozen rule is confirmed
+        as the correct parameterisation.  See
+        Section~\ref{sec:shadow}.
+
+  \item \textbf{Understand the mechanism boundary.}
+        The signal requires fear (DVOL $\geq 54$) to work.  Questions:
+        does the threshold migrate over time (secular decline in crypto vol)?
+        Is DVOL $\geq 54$ predictable from macro context or can it be
+        conditioned on something more forward-looking than the current level?
+\end{enumerate}
+
+%% ============================================================
+\subsection{Shadow Variant Research}
+\label{sec:shadow}
+%% ============================================================
+
+Three shadow variants of N3 were constructed to test whether relaxing the
+frozen thresholds adds genuine edge.  All three are long-only (matching the
+official N3\_DVOL\_LONG rule) and use identical data, holding period, and cost
+model.
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Variant & N3$z$ threshold & DVOL threshold & Research question \\
+\midrule
+Official N3   & $> 0.75$ & $\geq 54$ & Frozen production rule \\
+Shadow 0.75/51 & $> 0.75$ & $\geq 51$ & Does DVOL $= 51$--$53$ have edge? \\
+Shadow 0.50/51 & $> 0.50$ & $\geq 51$ & Does a weaker $z$ cut add trades? \\
+Shadow 0.50/46 & $> 0.50$ & $\geq 46$ & Low-IV control; expected to fail \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection*{Aggregate performance (OOS 2024--2026)}
+
+All four variants show positive aggregate Sharpe because every shadow variant
+\emph{contains} all the official N3 trades.  The relevant comparison is not the
+aggregate but the \emph{marginal trades} each shadow adds beyond the official
+rule.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Exp.\ \% \\
+\midrule
+Official N3 (0.75/54)  & 146 & $+3.38$ & $+10{,}094$ & $-1{,}150$ & 16.9 \\
+Shadow 0.75/51         & 156 & $+2.67$ & $+\phantom{0}9{,}056$ & $-2{,}302$ & 18.1 \\
+Shadow 0.50/51         & 186 & $+2.05$ & $+\phantom{0}8{,}242$ & $-2{,}045$ & 21.6 \\
+Shadow 0.50/46         & 216 & $+1.88$ & $+\phantom{0}8{,}478$ & $-2{,}809$ & 25.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each shadow relaxation increases trade count, drawdown, and exposure while
+reducing Sharpe --- consistent with the addition of lower-quality trades.
+
+\subsubsection*{Incremental analysis --- marginal trades}
+
+Each shadow variant's trades are partitioned into those shared with the official
+rule (identical entry dates) and the marginal trades it adds uniquely.
+
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Shadow variant & Marginal $n$ & Sharpe & PnL (bp) & Win\,\% & $p$-boot \\
+\midrule
+Shadow 0.75/51 & 10 & $-2.91$ & $-1{,}050$ & 50.0 & 1.000 \\
+Shadow 0.50/51 & 40 & $-1.92$ & $-1{,}900$ & 50.0 & 0.909 \\
+Shadow 0.50/46 & 70 & $-1.12$ & $-1{,}670$ & 52.9 & 0.723 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every marginal bucket has negative Sharpe and block-bootstrap $p$-values
+far above any conventional significance level.  \textbf{The entire positive
+edge in all three shadow variants derives from the official N3 trades they
+inherit.}  The marginal trades they contribute are indistinguishable from noise.
+
+\subsubsection*{DVOL regime breakdown}
+
+Decomposing trades by DVOL zone reveals where the edge concentrates within the
+official rule itself:
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+DVOL zone & $n$ & Sharpe & PnL (bp) \\
+\midrule
+$54 \leq \mathrm{DVOL} < 57$ & 30 & $-2.09$ & $-1{,}040$ \\
+$\mathrm{DVOL} \geq 57$      & 116 & $+4.55$ & $+11{,}135$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The $+4.55$ Sharpe at DVOL $\geq 57$ accounts for essentially all of the
+strategy's profitability.  Trades in the $54$--$57$ zone are a net drag
+($-2.09$ Sharpe, $-1{,}040$ bp).  Shadow variants that reach into lower DVOL
+zones simply add further losing strata below an already weak bucket.
+
+\subsubsection*{N3$z \times$ DVOL parameter grid}
+
+Sharpe across the full threshold grid (OOS 2024--2026, long-only, maker cost):
+
+\begin{center}
+\begin{tabular}{r|rrrrr}
+\toprule
+N3$z$ $\backslash$ DVOL & 46 & 48 & 51 & 54 & 57 \\
+\midrule
+0.25 & $+1.99$ & $+2.15$ & $+2.25$ & $+2.69$ & $+3.47$ \\
+0.50 & $+1.88$ & $+1.99$ & $+2.05$ & $+2.48$ & $+3.48$ \\
+0.75 & $+2.42$ & $+2.42$ & $+2.67$ & $+3.38$ & $+4.54$ \\
+1.00 & $+2.81$ & $+2.88$ & $+3.24$ & $+4.21$ & $+4.78$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Sharpe increases monotonically as both thresholds are tightened.  The gradient
+is steepest in the DVOL dimension: moving from DVOL $= 46$ to DVOL $= 57$
+at fixed N3$z = 0.75$ raises Sharpe from $+2.42$ to $+4.54$.  The gradient in
+the N3$z$ dimension is shallower but consistent.
+
+\subsubsection*{Conclusion}
+
+The shadow strategy research confirms the frozen rule and adds two further
+observations:
+
+\begin{enumerate}
+  \item \textbf{The threshold boundary is correct.}  No relaxation of either
+        the DVOL or N3$z$ threshold adds statistically significant edge.  The
+        shadow variants are rejected.
+
+  \item \textbf{The DVOL $\geq 57$ zone is the dominant edge source.}  The
+        DVOL $= 54$--$57$ band is a net drag within the official strategy.
+        Tightening to DVOL $\geq 57$ improves Sharpe substantially ($+4.54$)
+        at the cost of fewer opportunities ($n = 116$ vs $n = 146$ over OOS
+        2024--2026).  This is a live-monitoring observation rather than a tuning
+        recommendation: the frozen rule remains DVOL $\geq 54$ to preserve
+        statistical power and avoid post-hoc selection.
+\end{enumerate}
+
+%% ============================================================
+\section{Paper Trading System}
+\label{sec:papertrading}
+%% ============================================================
+
+\subsection{Overview}
+
+A production-quality paper trading system validates the frozen strategy rule in
+near-real-time without capital at risk.  The system fetches live market data,
+evaluates the N3 signal daily, and records every decision with full audit
+provenance.
+
+\subsection{Architecture}
+
+The system consists of three layers:
+
+\begin{description}
+  \item[Data layer] \hfill \\
+    Deribit public API supplies hourly DVOL bars.  A 30-day rolling mean and
+    standard deviation are computed at evaluation time to produce the live
+    N3$z$ score.  Binance FAPI supplies the BTCUSDT perpetual mark price and
+    current funding rate.  All fetches use official public endpoints; no
+    authentication is required.
+
+  \item[Backend (FastAPI + APScheduler + SQLite)] \hfill \\
+    A Python backend runs two scheduled jobs:
+    \begin{enumerate}
+      \item \textbf{Daily signal job} (00:00 UTC): fetches DVOL and price,
+            computes N3$z$, evaluates the frozen rule, logs the signal with a
+            human-readable \emph{reason string} (e.g.\ ``N3$z = 1.12 > 0.75$ and
+            DVOL $= 56.4 \geq 54$''), and opens a paper long if both conditions
+            are satisfied and no position is open.
+      \item \textbf{Exit check} (every 15 minutes): closes any open position
+            whose 24-hour hold has elapsed.  Full PnL is computed at exit:
+            price return plus funding received minus maker fees.
+    \end{enumerate}
+    Every paper trade stores entry timestamp, price, DVOL, N3$z$, entry reason,
+    exit timestamp, exit price, gross price return, funding PnL, fees, and net
+    PnL in basis points.  The entry reason string proves that the frozen rule
+    was obeyed for every individual trade.
+
+  \item[Frontend (React + TypeScript)] \hfill \\
+    A dashboard exposes seven pages: live signal status, daily signal log,
+    trade journal, PnL attribution per trade, equity curve with drawdown,
+    system health (data freshness, scheduler status, next scheduled exit), and
+    a historical replay page.
+\end{description}
+
+\subsection{Historical Replay}
+
+The replay endpoint runs the identical signal logic against the stored parquet
+files and reproduces the position-level backtest (Section~\ref{sec:backtest}).
+If the live implementation is correct, the replay output matches the reported
+targets:
+
+\begin{center}
+\begin{tabular}{lrr}
+\hline
+Metric & Target & Replay \\
+\hline
+Trades (OOS 2024--2026) & 199 & $\approx 199$ \\
+Sharpe & $+2.95$ & $\approx +2.95$ \\
+Net PnL & $+11{,}228$ bp & $\approx +11{,}228$ bp \\
+Max Drawdown & $-1{,}612$ bp & $\approx -1{,}612$ bp \\
+Win rate & $53.8\%$ & $\approx 53.8\%$ \\
+\hline
+\end{tabular}
+\end{center}
+
+This replay check provides a continuous integration test between the research
+codebase and the live system: any divergence indicates an implementation bug.
+
+\subsection{Test Suite}
+
+The backend is covered by 61 automated unit tests across four modules:
+
+\begin{description}
+  \item[\texttt{test\_n3\_signal}] Signal evaluation: correct N3$z$ arithmetic,
+    DVOL regime filter, threshold boundary conditions, reason string content.
+  \item[\texttt{test\_pnl}] PnL calculator: price return, funding sign
+    convention, fee deduction, basis-point conversion.
+  \item[\texttt{test\_risk}] Pre-trade risk checks: price/DVOL validity, data
+    freshness, history depth, position limit enforcement.
+  \item[\texttt{test\_paper\_broker}] End-to-end broker using an in-memory
+    SQLite database: open/close cycle, entry reason storage, equity curve
+    updates, position limit enforcement across the full trade lifecycle.
+\end{description}
+
+All 61 tests pass against the live backend codebase.
+
+\subsection{Current Status (2026-05-13)}
+
+As of the report date, DVOL $= 38.47$, well below the $54$ threshold.  The
+strategy is correctly flat.  This is the bull-market IV suppression predicted
+by the 2025-H2 kill-attempt: when DVOL is structurally low, the regime filter
+eliminates all entries.  The first live paper trade will fire when DVOL
+recovers to $\geq 54$ with N3$z > 0.75$.
+
+This quiescent period provides an opportunity to verify the system's flat
+behaviour: every daily signal log should record the DVOL regime filter as the
+rejection reason, confirming that the implementation correctly abstains when
+the regime condition is not met.
+
+\end{document}

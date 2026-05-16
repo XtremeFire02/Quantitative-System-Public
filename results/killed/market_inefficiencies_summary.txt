@@ -1,0 +1,43 @@
+========================================================================
+MARKET INEFFICIENCY VERIFICATION SUITE
+========================================================================
+Loaded 1m rows: 1,052,640
+Hourly rows   : 17,544
+15m rows      : 70,176
+
+Quintile summary vs forward returns:
+             label     feature    ret_col  spread_q5_minus_q1_pct        ic         ic_p  ttest_t  ttest_p     n
+   basis_24h_vs_4h basis_z_24h fwd_ret_4h                0.039974  0.003328 7.363510e-01 1.182593 0.237040 10237
+momentum_24h_vs_4h   mom_z_24h fwd_ret_4h                0.045158 -0.038989 2.790583e-07 1.660803 0.096798 17349
+momentum_72h_vs_8h   mom_z_72h fwd_ret_8h                0.138357 -0.006355 4.056040e-01 3.775170 0.000161 17129
+
+Best train thresholds:
+  basis_z_24h: 2.0
+  mom_z_24h  : 2.0
+
+--- Top taker-cost strategies by split ---
+split           feature  threshold  secondary_threshold    ret_col  n_trades  avg_net_pct  ann_return_pct    sharpe  max_drawdown_pct
+ test         mom_z_24h        1.5                  NaN fwd_ret_4h       274     0.008356        4.555171  0.147735        -16.749494
+ test       basis_z_24h        1.5                  NaN fwd_ret_4h       378    -0.000900       -0.676524 -0.021098        -20.039981
+ test         mom_z_24h        2.0                  NaN fwd_ret_4h       125    -0.044552      -11.497290 -0.474434        -17.088350
+ test       basis_z_24h        1.0                  NaN fwd_ret_4h       644    -0.035464      -45.428465 -1.061024        -31.296558
+ test liquidation_proxy        3.0                  2.0 fwd_ret_1h        85    -0.107658      -18.295548 -1.204940        -10.877744
+ test       basis_z_24h        2.5                  NaN fwd_ret_4h        88    -0.103485      -18.364258 -1.251340        -13.914415
+ test         mom_z_24h        1.0                  NaN fwd_ret_4h       491    -0.055620      -54.346494 -1.441780        -35.552181
+ test liquidation_proxy        3.0                  1.5 fwd_ret_1h       101    -0.134480      -27.155636 -1.901217        -19.185304
+ test liquidation_proxy        2.0                  2.0 fwd_ret_1h       138    -0.119459      -32.959355 -2.010811        -15.509195
+ test liquidation_proxy        2.5                  2.0 fwd_ret_1h       106    -0.155278      -32.907732 -2.064546        -15.315686
+ test liquidation_proxy        3.0                  2.0 fwd_ret_4h        76    -0.246046      -37.386153 -2.135924        -20.009289
+ test liquidation_proxy        2.0                  2.0 fwd_ret_4h       119    -0.183853      -43.772089 -2.156448        -23.494048
+
+Settlement hour effect (1h forward mean return):
+selected_best_train_hour
+0    0.007501
+1    0.057450
+
+Saved:
+  results/market_inefficiencies_summary.txt
+  results/market_inefficiencies_strategy_metrics.csv
+  results/market_inefficiencies_strategy_trades.parquet
+  results/market_inefficiencies_quintiles.csv
+  results/market_inefficiencies_seasonality.csv

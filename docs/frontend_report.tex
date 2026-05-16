@@ -1,0 +1,791 @@
+%% ============================================================
+%%  Frontend Reference — Paper Trading Dashboard
+%%  Compile: pdflatex frontend_report.tex  (twice for refs)
+%% ============================================================
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{listings}
+\usepackage{fancyvrb}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\definecolor{codebg}{HTML}{0d0d14}
+\definecolor{codeframe}{HTML}{1e1e2e}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg!10},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeframe},
+  breaklines=true,
+  captionpos=b,
+  showstringspaces=false,
+}
+
+\title{\textbf{Frontend Reference}\\[0.5em]
+\large Paper Trading Dashboard — Architecture and Page Guide}
+\author{}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+
+%% ============================================================
+\section{Overview}
+%% ============================================================
+
+The paper trading dashboard is a React/TypeScript single-page application (SPA)
+that provides a real-time window into the N3 DVOL strategy system running in the
+FastAPI backend. Every page fetches data directly from the backend REST API; there
+is no intermediate state-management library (no Redux, no Zustand) — each page
+owns its own local state with React's built-in \texttt{useState} and \texttt{useEffect}.
+
+The dashboard was built for a single operator running a small number of strategies
+on BTCUSDT perpetual futures. It is not designed for multiple simultaneous users.
+All destructive actions (kill switch, strategy demotion) are protected by the
+backend's own validation; the frontend is a thin presentation layer.
+
+
+%% ============================================================
+\section{Technology Stack}
+%% ============================================================
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+Concern & Library / Version \\
+\midrule
+Framework       & React 19 with TypeScript 4.9 \\
+Routing         & React Router DOM v7 \\
+Charts          & Recharts 3 \\
+Icons           & Lucide React \\
+Build tool      & Create React App (\texttt{react-scripts 5}) \\
+Dev port        & 3000 (local), 80 (Docker via nginx) \\
+API base URL    & \texttt{http://localhost:8000/api} (configurable via \texttt{REACT\_APP\_API\_URL}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+There are no UI component libraries (no Material UI, no Chakra). All styling is
+hand-written CSS in \texttt{App.css} using a consistent dark-theme design system
+with class names like \texttt{.card}, \texttt{.badge}, \texttt{.table-wrapper},
+\texttt{.positive}, and \texttt{.negative}.
+
+
+%% ============================================================
+\section{File Structure}
+%% ============================================================
+
+\begin{Verbatim}[fontsize=\small]
+paper_trading/frontend/src/
+│
+├── App.tsx             Navigation bar + route definitions
+├── App.css             Global dark-theme design system
+├── index.tsx           React entry point
+│
+├── api/
+│   ├── client.ts       apiFetch / apiPost / apiPostBody / apiPatch / apiDelete
+│   ├── index.ts        Named api.* methods for every endpoint
+│   └── types.ts        TypeScript interfaces for all API responses
+│
+├── components/
+│   └── BotConfigPanel.tsx   Slide-out gear panel for market/strategy config
+│
+└── pages/
+    ├── Dashboard.tsx        Live market data, signal state, position, equity
+    ├── Signals.tsx          Daily signal evaluation log
+    ├── Trades.tsx           Full trade journal
+    ├── TradeDetail.tsx      Per-trade PnL breakdown with attribution
+    ├── Performance.tsx      Equity curve, Sharpe, drawdown chart, yearly table
+    ├── Replay.tsx           Historical backtest certification (not live trades)
+    ├── ForwardLog.tsx       P3 shadow strategy independence monitor
+    ├── RiskDashboard.tsx    Portfolio exposure, limit gauges, drawdowns
+    ├── StrategyPipeline.tsx Strategy lifecycle manager (research → validated)
+    ├── Alerts.tsx           Inbox for system events with category filter
+    ├── DataQuality.tsx      Feed freshness and completeness checks
+    ├── Experiments.tsx      Research run log with metrics drilldown
+    └── SystemHealth.tsx     Scheduler status, data freshness, error logs
+\end{Verbatim}
+
+
+%% ============================================================
+\section{API Layer}
+%% ============================================================
+
+\subsection{client.ts — HTTP primitives}
+
+All HTTP calls flow through four functions in \texttt{client.ts}:
+
+\begin{Verbatim}[fontsize=\small]
+const BASE = process.env.REACT_APP_API_URL ?? "http://localhost:8000/api";
+
+apiFetch<T>(path, opts?)      // GET (default) or any method
+apiPost<T>(path)              // POST with no body
+apiPostBody<T>(path, body)    // POST with JSON body
+apiPatch<T>(path, body)       // PATCH with JSON body
+apiDelete<T>(path)            // DELETE
+\end{Verbatim}
+
+Every function throws if the response is not \texttt{2xx}. Pages catch the
+exception and store the message in local \texttt{error} state, displaying it
+inline with red text rather than crashing.
+
+\subsection{index.ts — Named API methods}
+
+\texttt{api.*} provides one named method per endpoint, typed against the
+interfaces in \texttt{types.ts}. All pages import \texttt{api} from this
+module and never call \texttt{apiFetch} directly. This ensures a single
+place to update if an endpoint path changes.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ll}
+\toprule
+Method & Endpoint \\
+\midrule
+\texttt{api.dashboard()}            & \texttt{GET /api/dashboard} \\
+\texttt{api.signalHistory(n)}       & \texttt{GET /api/signals/history?limit=n} \\
+\texttt{api.trades()}               & \texttt{GET /api/trades} \\
+\texttt{api.trade(id)}              & \texttt{GET /api/trades/:id} \\
+\texttt{api.performance()}          & \texttt{GET /api/performance} \\
+\texttt{api.replay(start, train)}   & \texttt{GET /api/replay?start=\&include\_train=} \\
+\texttt{api.forwardLog(strategy)}   & \texttt{GET /api/forward-log/p3?strategy=} \\
+\texttt{api.riskState()}            & \texttt{GET /api/risk/state} \\
+\texttt{api.strategies()}           & \texttt{GET /api/strategies} \\
+\texttt{api.strategyUpdateStatus()} & \texttt{POST /api/strategies/:name/status} \\
+\texttt{api.alerts(n)}              & \texttt{GET /api/alerts?limit=n} \\
+\texttt{api.alertRead(id)}          & \texttt{POST /api/alerts/:id/read} \\
+\texttt{api.dataQuality()}          & \texttt{GET /api/system/data-quality} \\
+\texttt{api.experiments()}          & \texttt{GET /api/experiments} \\
+\texttt{api.systemHealth()}         & \texttt{GET /api/system/health} \\
+\texttt{api.runDailySignal()}       & \texttt{POST /api/jobs/run-daily-signal} \\
+\texttt{api.checkExits()}           & \texttt{POST /api/jobs/check-exits} \\
+\texttt{api.configAvailable()}      & \texttt{GET /api/config/available} \\
+\texttt{api.configActive()}         & \texttt{GET /api/config/active} \\
+\texttt{api.configAdd()}            & \texttt{POST /api/config/active} \\
+\texttt{api.configRemove()}         & \texttt{DELETE /api/config/active/:market/:strategy} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{types.ts — TypeScript interfaces}
+
+Every API response has a corresponding TypeScript interface. The key ones are:
+
+\begin{itemize}[noitemsep]
+  \item \textbf{DashboardData} — combined market + signal + position + equity snapshot
+  \item \textbf{SignalRecord} — one row per daily evaluation (dvol, n3\_z, entry\_signal, reason)
+  \item \textbf{TradeRecord} — full trade journal row with PnL attribution fields
+  \item \textbf{PerformanceData} — aggregate stats, equity history, yearly breakdown
+  \item \textbf{PortfolioState} — live exposure, limit usage, open positions, drawdowns
+  \item \textbf{StrategyPipelineRow} — lifecycle status + live stats per strategy
+  \item \textbf{ForwardLogResponse} — P3 shadow evaluation log + independence monitor stats
+  \item \textbf{AlertRecord} — event notification with category, title, body, read state
+  \item \textbf{DataQualityReport} — list of named feed checks with ok/warn/error status
+  \item \textbf{ExperimentRun} — research run metadata: script, params, metrics, verdict
+\end{itemize}
+
+
+%% ============================================================
+\section{Navigation and Routing}
+%% ============================================================
+
+\texttt{App.tsx} defines the navigation bar and the route table. The nav bar
+is a horizontal strip that stays fixed at the top. Each link is a
+\texttt{NavLink} from React Router and gets an \texttt{active} CSS class when
+its route matches. At the right end of the nav bar sits the \texttt{BotConfigPanel}
+gear icon (Section~\ref{sec:botconfig}).
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lll}
+\toprule
+Route & Page & Primary purpose \\
+\midrule
+\texttt{/}              & Dashboard         & Live system state \\
+\texttt{/signals}       & Signals           & Daily evaluation log \\
+\texttt{/trades}        & Trades            & Trade journal \\
+\texttt{/trades/:id}    & TradeDetail       & Per-trade PnL attribution \\
+\texttt{/performance}   & Performance       & Equity curve \& aggregate stats \\
+\texttt{/replay}        & Replay            & Research backtest certification \\
+\texttt{/forward-log}   & ForwardLog        & P3 shadow strategy log \\
+\texttt{/risk}          & RiskDashboard     & Portfolio exposure \& limits \\
+\texttt{/pipeline}      & StrategyPipeline  & Strategy lifecycle manager \\
+\texttt{/alerts}        & Alerts            & System event inbox \\
+\texttt{/data-quality}  & DataQuality       & Feed health checks \\
+\texttt{/experiments}   & Experiments       & Research run log \\
+\texttt{/health}        & SystemHealth      & Scheduler \& data freshness \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+%% ============================================================
+\section{Page Reference}
+%% ============================================================
+
+\subsection{Dashboard (\texttt{/})}
+\label{sec:dashboard}
+
+The landing page. It is the only page with an automatic refresh loop — it
+calls \texttt{GET /api/dashboard} every 30 seconds via \texttt{setInterval}
+and clears the interval on unmount.
+
+\paragraph{Sections.}
+\begin{enumerate}[noitemsep]
+  \item \textbf{Market} — BTC spot price, current 8h funding rate, last update time.
+  \item \textbf{Signal} — DVOL level (coloured green if $\geq 54$), N3 z-score,
+        DVOL filter pass/fail badge, signal outcome (LONG or FLAT),
+        and the human-readable reason string from the last evaluation.
+  \item \textbf{Position} — if a trade is open: entry price, unrealised PnL in basis
+        points, and a countdown showing hours until the 24h exit. If flat: a grey
+        ``no open position'' card.
+  \item \textbf{Equity} — running equity (starts at \$10,000), realised PnL as a
+        percentage, and current drawdown from peak.
+\end{enumerate}
+
+\paragraph{Manual trigger.}
+The ``Run Signal Now'' button calls \texttt{POST /api/jobs/run-daily-signal},
+then immediately refreshes the dashboard. This is the mechanism for testing the
+signal evaluator without waiting for midnight UTC.
+
+\paragraph{Design notes.}
+DVOL is coloured \textcolor[HTML]{4ade80}{green} when the regime filter passes
+($\geq 54$) and \textcolor[HTML]{f87171}{red} when it fails. The LONG/FLAT
+badge uses the same green/grey convention. This makes the signal state readable
+at a glance without reading numbers.
+
+---
+
+\subsection{Signals (\texttt{/signals})}
+
+Shows every daily N3 evaluation stored in the database, newest first (the
+list from the API is oldest-first; the page reverses it for display).
+
+\paragraph{Summary cards.}
+Three counters at the top: total evaluations, days where DVOL $\geq 54$
+(the regime filter), and days where the full entry signal fired. The
+``DVOL Filter Pass'' counter as a fraction of total evaluations shows
+what proportion of days the market was in the high-vol regime.
+
+\paragraph{Table columns.}
+Date, DVOL, 30d mean, 30d std, N3 z-score (highlighted green if $> 0.75$),
+DVOL filter pass/fail badge, signal badge (LONG or FLAT), and the full
+reason string from the evaluator.
+
+\paragraph{Empty state.}
+If no signals exist yet (fresh system), the table is replaced with a prompt
+to run the daily signal job.
+
+---
+
+\subsection{Trades (\texttt{/trades})}
+
+Fetches all trades from \texttt{GET /api/trades} and renders them in a
+scrollable table. Each row links to the corresponding \texttt{/trades/:id}
+detail page.
+
+Columns: trade ID, strategy, market, side (LONG/SHORT badge), entry
+timestamp, entry price, planned exit, status (OPEN/CLOSED badge), and
+net PnL in basis points coloured green/red. Open trades show ``---'' for
+the PnL column since the position has not yet been closed.
+
+---
+
+\subsection{TradeDetail (\texttt{/trades/:id})}
+
+Per-trade PnL attribution. Fetches \texttt{GET /api/trades/:id} for the
+single record. Displays:
+
+\begin{itemize}[noitemsep]
+  \item Entry and exit prices, timestamps, and the human-readable entry reason.
+  \item PnL decomposition: gross price return (log-return, in bp), funding PnL
+        (three settlements over 24h, negative when longs pay), fees (6bp
+        round-trip, maker cost model), and net PnL as the sum.
+  \item N3 z-score and DVOL level at entry, for context on why the signal fired.
+\end{itemize}
+
+---
+
+\subsection{Performance (\texttt{/performance})}
+
+Shows aggregate performance of all closed trades. Requests
+\texttt{GET /api/performance} which returns pre-computed statistics
+plus the full equity curve history.
+
+\paragraph{Summary cards.}
+Sharpe (annualised; highlighted green if $> 2$), total PnL in bp, max drawdown,
+win rate, average winning trade (bp), average losing trade (bp), and profit factor.
+
+\paragraph{Charts.}
+Two Recharts \texttt{LineChart} components below the cards:
+\begin{enumerate}[noitemsep]
+  \item \textbf{Equity curve} — running equity in USD against time, with a dashed
+        reference line at \$10,000 (the starting capital). Points are individual
+        equity curve rows from the database, not interpolated.
+  \item \textbf{Drawdown} — percentage drawdown from peak equity against the same
+        timeline, in red. Both charts use the same \texttt{ResponsiveContainer}
+        wrapper so they resize with the browser window.
+\end{enumerate}
+
+\paragraph{Year-by-year table.}
+If the backend returns a \texttt{yearly\_breakdown} array, a third section
+shows trades, net PnL, Sharpe, and win rate per calendar year. This is
+useful for spotting regime-driven variance.
+
+\paragraph{Empty state.}
+When there are no closed trades yet, the entire page is replaced with a
+single card saying ``No closed trades yet.'' The charts and table are not
+rendered.
+
+---
+
+\subsection{Replay (\texttt{/replay})}
+
+\textbf{Important:} this page does not show live paper trading results.
+It runs the historical research backtest from scratch against the raw parquet
+data files (\texttt{data/raw/}) and verifies that the live backend code
+produces numbers within 15\% of the research report targets. It is a
+certification tool.
+
+\paragraph{How it works.}
+Clicking ``Run Replay'' calls \texttt{GET /api/replay?start=2024-01-01}.
+The backend reads the 1-minute kline and hourly DVOL parquet files, computes
+the 30d rolling z-score, samples daily, applies the frozen rule
+(\texttt{N3z > 0.75 AND DVOL} $\geq 54$), and returns per-trade results with
+cumulative PnL. The process takes 5--10 seconds because it scans 1.7M bars.
+
+\paragraph{Match badges.}
+Each summary card (Trades, Sharpe, Net PnL, Max Drawdown, Win Rate) shows a
+green \textbf{MATCH} or red \textbf{DIFF} badge computed as:
+\[
+  \text{pass} \iff \frac{|\text{actual} - \text{target}|}{|\text{target}|} \leq 0.15
+\]
+The 15\% tolerance accounts for minor differences in data alignment
+between the research scripts and the live data pipeline.
+
+\paragraph{Reference targets.}
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Metric & Research target \\
+\midrule
+Trades       & 199 \\
+Sharpe       & $+2.95$ \\
+Net PnL      & $+11{,}228$ bp \\
+Max drawdown & $-1{,}612$ bp \\
+Win rate     & $53.8\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Checkbox: include 2023.}
+When ticked, the replay also shows 2023 training-period results. These are
+displayed at reduced opacity in the period breakdown table to distinguish
+in-sample from out-of-sample rows.
+
+\paragraph{Error state.}
+If the parquet files are not present (excluded from the repository),
+the backend returns HTTP 503 and the frontend shows a specific message:
+``Parquet data files not found. Run data/download.py\ldots''
+
+---
+
+\subsection{P3 Log / Forward Log (\texttt{/forward-log})}
+
+The shadow monitoring page for the P3 OI-Price Divergence strategy, which
+is in \texttt{shadow} status and under forward review until $\geq$\,2026-08-14.
+
+\paragraph{Purpose.}
+Every day P3 is evaluated alongside N3, regardless of whether a trade is
+opened. This page records every evaluation so that the independence of P3
+from N3 can be measured in real time. The key metric is the Sharpe on
+\emph{exclusive} P3 trades --- days where P3 fired but N3 did not.
+OOS research baseline: Sharpe $= +5.18$ on 57 exclusive trades ($p = 0.007$).
+
+\paragraph{Summary stat boxes.}
+Three side-by-side boxes: ``All trades'', ``P3-exclusive (independence
+monitor)'', and ``N3 overlap''. Each shows $n$, Sharpe, total PnL, and win
+rate. The exclusive-trade box is the forward review's primary metric.
+
+\paragraph{Evaluation counter.}
+A fourth card shows total evaluations, traded days, exclusive days (P3
+fired, N3 did not), and overlap days (both strategies fired).
+
+\paragraph{Row toggle.}
+By default only rows where the signal fired are shown. The ``Show all
+evaluations'' button reveals no-signal rows at 50\% opacity. No-signal rows
+are important because they prove the rule stayed frozen: if P3 never fires
+during a long low-volatility stretch, the log still records an evaluation
+every day confirming the evaluator is running correctly.
+
+\paragraph{Table columns.}
+Date, DVOL, regime (DD/DU/NN), $\Delta$P 24h (price change, red if negative),
+$\Delta$OI 24h (open interest change, red if negative), signal (YES/no badge),
+exclusive/overlap badge, N3 also fired (blue checkmark), trade status, and
+net PnL in basis points.
+
+\paragraph{Empty state.}
+When no P3 signals exist yet (fixed by the bug described in the previous
+section), the page shows ``No rows to display'' rather than crashing.
+
+---
+
+\subsection{Portfolio Risk (\texttt{/risk})}
+
+Live exposure dashboard. Fetches \texttt{GET /api/risk/state}, which returns
+current open positions, daily PnL, and limit configuration.
+
+\paragraph{Limit gauges.}
+Two horizontal bar charts at the top:
+\begin{itemize}[noitemsep]
+  \item \textbf{Open positions} — $n_{\text{open}} / 3$ (max 3 total positions).
+        Bar turns yellow at $50\%$ usage, red at $80\%$.
+  \item \textbf{Daily loss} — current daily PnL against the $-500$ bp limit.
+        Only fills when the day is in loss.
+\end{itemize}
+
+\paragraph{Hard limits table.}
+Shows the current value, configured maximum, and an OK/BREACH status badge
+for total open positions and daily PnL.
+
+\paragraph{Open positions table.}
+Lists every currently open trade: trade ID, strategy, market, side badge,
+entry price, DVOL at entry, and planned exit time.
+
+\paragraph{Strategy trailing drawdowns.}
+For each strategy with at least 5 trades, shows the trailing drawdown on
+the last 20 trades against the $-20\%$ limit. Strategies that breach this
+are shown as ``PAUSED'' (the backend will block new entries for them).
+
+---
+
+\subsection{Strategy Pipeline (\texttt{/pipeline})}
+
+Displays every known strategy and its lifecycle status. The formal stages are:
+
+\begin{center}
+research $\to$ candidate $\to$ shadow $\to$ validated $\to$ paused / killed
+\end{center}
+
+Each status has a distinct colour: grey (research), blue (candidate), yellow
+(shadow), green (validated), orange (paused), red (killed).
+
+\paragraph{Status counts.}
+A row of small cards at the top shows how many strategies are in each stage.
+Only stages with at least one strategy appear.
+
+\paragraph{Per-strategy row.}
+Strategy name (monospace), status badge, description string from the backend,
+number of live evaluations, number of trades opened, last promotion date, and
+a note field. Each row has an ``Edit'' button that expands an inline form for
+changing the status and adding a note.
+
+\paragraph{Editing.}
+The inline edit form offers a dropdown of all valid statuses and a free-text
+note field. Clicking ``Save'' calls \texttt{POST /api/strategies/:name/status}
+and refreshes the table. This is the primary mechanism for promoting P3 from
+shadow to validated (or killing it) after the forward review.
+
+---
+
+\subsection{Alerts (\texttt{/alerts})}
+
+An inbox for system events. Fetches both \texttt{GET /api/alerts} (last 200
+records) and \texttt{GET /api/alerts/summary} (unread counts by category).
+
+\paragraph{Alert categories.}
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ll}
+\toprule
+Category & When it fires \\
+\midrule
+\texttt{signal\_fired}     & An entry signal was evaluated as LONG and a trade was opened \\
+\texttt{trade\_closed}     & A trade reached its 24h expiry and was closed \\
+\texttt{data\_failed}      & Binance or Deribit API returned an error \\
+\texttt{scheduler\_missed} & The daily job did not fire at midnight UTC \\
+\texttt{risk\_blocked}     & A portfolio risk limit prevented a trade from opening \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Unread indicators.}
+Unread alerts have a small blue dot in the leftmost column and full opacity.
+Read alerts are at 55\% opacity. A ``Mark all read'' button appears when
+there are unread alerts.
+
+\paragraph{Category filter.}
+A row of filter buttons (all / signal\_fired / trade\_closed / \ldots) lets
+the operator focus on a single alert type. Clicking a category summary card
+at the top also filters to that category.
+
+\paragraph{Expandable detail.}
+Clicking any row expands a full-width panel below it showing the alert
+body text (pre-formatted) and the market name. This is where the
+per-trade PnL summary, the data failure error message, or the risk block
+reason is displayed.
+
+---
+
+\subsection{Data Quality (\texttt{/data-quality})}
+
+Fetches \texttt{GET /api/system/data-quality} which runs a set of named
+checks against the latest stored market data.
+
+\paragraph{Summary cards.}
+Overall status (OK / WARN / ERROR), total check count, warning count, and
+error count. The overall status is the worst of any individual check.
+
+\paragraph{Checks table.}
+Each check row shows: check name (monospace), human-readable detail, current
+value, expected value or threshold, and a coloured status badge. Examples of
+checks include: ``last DVOL update within 2 hours'', ``BTC price within 5\%
+of mark price'', ``funding rate within expected range''.
+
+\paragraph{Incident use.}
+This page is the first place to look during a data staleness alert
+(Severity S2). A check with status \texttt{error} directly identifies
+which feed is stale or unreachable.
+
+---
+
+\subsection{Experiments (\texttt{/experiments})}
+
+A read-only log of every research run recorded in the \texttt{experiment\_runs}
+database table. Fetches \texttt{GET /api/experiments}.
+
+\paragraph{Verdict summary.}
+A row of small cards counts runs by verdict: passed, failed, killed, pending.
+
+\paragraph{Runs table.}
+Columns: run ID (unique slug like \texttt{25\_du\_short\_20260514}), strategy
+name, script name, data range (start → end), short commit hash (8 chars), verdict
+badge, and creation date.
+
+\paragraph{Expandable drilldown.}
+Clicking a row expands an inline panel showing three sections:
+\begin{enumerate}[noitemsep]
+  \item \textbf{Metrics} — key-value pills (e.g.\ \texttt{sharpe: -0.44},
+        \texttt{n\_trades: 183}).
+  \item \textbf{Parameters} — the configuration of the research run
+        (thresholds, data ranges, cost model).
+  \item \textbf{Notes} — free-text verdict rationale.
+\end{enumerate}
+
+This page gives an auditable record of every hypothesis tested and its
+outcome, supporting the ``one kill attempt per signal'' discipline.
+
+---
+
+\subsection{System Health (\texttt{/health})}
+
+Fetches \texttt{GET /api/system/health} for the system status snapshot and
+\texttt{GET /api/system/logs} for recent log lines.
+
+Displays: overall health status (healthy/degraded), last Binance data update,
+market data staleness flag, last signal computation time, signal staleness flag,
+open position count, stale threshold in minutes, and database status.
+
+The log table shows recent \texttt{system\_logs} rows: timestamp, level
+(INFO/WARNING/ERROR), component name, and message. Error-level rows are
+highlighted red.
+
+---
+
+%% ============================================================
+\section{BotConfigPanel}
+\label{sec:botconfig}
+%% ============================================================
+
+The gear icon in the top-right of the navigation bar opens the
+\texttt{BotConfigPanel}, a slide-in panel from the right edge of the screen.
+It is a component (not a page) embedded directly in the nav bar, so it is
+accessible from any page without navigation.
+
+\paragraph{Active bots list.}
+The top section shows every active \texttt{BotConfig} row: the market
+icon, strategy display name, market identifier, and a remove button (×).
+Removing a bot calls \texttt{DELETE /api/config/active/:market/:strategy}
+and refreshes the list. An active bot is the driver for the daily signal
+job --- removing it stops future signal evaluations for that
+market/strategy pair.
+
+\paragraph{Add new bot.}
+A two-step flow below the active list:
+\begin{enumerate}[noitemsep]
+  \item \textbf{Select market} — buttons rendered from
+        \texttt{GET /api/config/available}. Currently only BTCUSDT is listed.
+  \item \textbf{Select strategy} — after a market is chosen, only
+        strategies compatible with that market are shown. Each strategy card
+        displays its status badge, description, tags, and hold period.
+        Already-active strategies are shown at 50\% opacity and cannot be
+        selected again. Strategies with status \texttt{coming\_soon} are
+        similarly disabled.
+\end{enumerate}
+Clicking ``+ Add Bot'' calls \texttt{POST /api/config/active} and refreshes
+both lists.
+
+\paragraph{Backdrop.}
+A dark translucent overlay covers the rest of the page when the panel is open.
+Clicking it closes the panel without saving.
+
+
+%% ============================================================
+\section{State Management Pattern}
+%% ============================================================
+
+The frontend uses no global state library. Every page manages its own state
+with \texttt{useState} and fetches data in \texttt{useEffect}. The pattern
+used throughout is:
+
+\begin{Verbatim}[fontsize=\small]
+const [data,    setData]    = useState<T | null>(null);
+const [loading, setLoading] = useState(true);
+const [error,   setError]   = useState<string | null>(null);
+
+const load = () => {
+  setLoading(true);
+  api.someEndpoint()
+    .then(setData)
+    .catch(e => setError(e.message))
+    .finally(() => setLoading(false));
+};
+
+useEffect(() => { load(); }, []);
+\end{Verbatim}
+
+Pages that support manual refresh expose a \texttt{load} function and attach it
+to a ``$\circlearrowleft$ Refresh'' button. The Dashboard is the only page that
+also sets up a \texttt{setInterval(load, 30000)} for automatic 30-second polling.
+
+Pages that support write operations (StrategyPipeline, Alerts, BotConfigPanel)
+call the write method, then call \texttt{load()} / \texttt{refresh()} to refetch
+and display the updated state.
+
+
+%% ============================================================
+\section{Design System}
+%% ============================================================
+
+All visual styling is in \texttt{App.css}. The design follows a dark theme
+with a near-black background (\texttt{\#0d0d17}) and a slightly lighter surface
+colour (\texttt{\#111118}) for cards.
+
+\paragraph{CSS class conventions.}
+\begin{itemize}[noitemsep]
+  \item \textbf{\texttt{.card}} — a bordered rounded box with 16px padding.
+        Used for every metric tile and content section.
+  \item \textbf{\texttt{.cards-grid}} — a CSS grid that auto-fills cards
+        at a minimum width of 160px, wrapping on narrow viewports.
+  \item \textbf{\texttt{.badge}} — a small pill label. Variants:
+        \texttt{badge-green}, \texttt{badge-red}, \texttt{badge-yellow},
+        \texttt{badge-blue}, \texttt{badge-gray}.
+  \item \textbf{\texttt{.positive}} / \textbf{\texttt{.negative}} — green
+        (\texttt{\#4ade80}) and red (\texttt{\#f87171}) text for PnL values.
+  \item \textbf{\texttt{.table-wrapper}} — a horizontally scrollable container
+        wrapping a \texttt{<table>}, with alternating row shading.
+  \item \textbf{\texttt{.chart-container}} — card wrapper for Recharts charts
+        with a grey title and consistent padding.
+  \item \textbf{\texttt{.loading}} — centred grey italic text for loading states.
+  \item \textbf{\texttt{.btn}} — base button style. Variants:
+        \texttt{btn-primary} (indigo fill), \texttt{btn-secondary}
+        (dark fill), \texttt{btn-ghost} (transparent, border only).
+\end{itemize}
+
+\paragraph{Colour semantics.}
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lll}
+\toprule
+Colour & Hex & Meaning \\
+\midrule
+Green  & \texttt{\#4ade80} & Positive PnL, filter pass, OK status \\
+Red    & \texttt{\#f87171} & Negative PnL, filter fail, error status \\
+Yellow & \texttt{\#fbbf24} & Warning, shadow strategy, elevated limits \\
+Blue   & \texttt{\#60a5fa} & N3 co-fire indicator, trade-closed alerts \\
+Orange & \texttt{\#f97316} & Paused strategy, risk-blocked alerts \\
+Indigo & \texttt{\#6366f1} & Primary action buttons, equity curve line \\
+Slate  & \texttt{\#64748b} & Muted text, secondary labels \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+%% ============================================================
+\section{Refresh Behaviour Summary}
+%% ============================================================
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lll}
+\toprule
+Page & Auto-refresh & Manual refresh \\
+\midrule
+Dashboard         & Every 30 seconds & ↻ button + ``Run Signal Now'' \\
+Signals           & No               & Page reload \\
+Trades            & No               & Page reload \\
+TradeDetail       & No               & Page reload \\
+Performance       & No               & Page reload \\
+Replay            & No (on demand)   & ``Run Replay'' button \\
+P3 Log            & No               & ↻ button \\
+Risk              & No               & ↻ button \\
+Pipeline          & No               & ↻ button (post-edit) \\
+Alerts            & No               & ↻ button + ``Mark all read'' \\
+Data Quality      & No               & ↻ button \\
+Experiments       & No               & ↻ button \\
+System Health     & No               & Page reload \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Only the Dashboard auto-polls. All other pages are static once loaded.
+For near-real-time monitoring after a manual signal trigger, use the Dashboard.
+
+
+%% ============================================================
+\section{Common Misconceptions}
+%% ============================================================
+
+\paragraph{Replay $\neq$ Performance.}
+The Replay page runs a historical simulation against parquet files and shows
+what would have happened. The Performance page shows what actually happened
+in the live paper trading system. On a fresh system with no live trades,
+Performance shows ``No closed trades yet'' while Replay shows the full
+historical backtest results. These are two separate data sources.
+
+\paragraph{P3 Log shows no-signal days.}
+Every daily evaluation is recorded in the forward log, even days where the
+signal did not fire. Toggling ``Show all evaluations'' reveals these rows.
+This is by design: no-signal days prove the evaluator is running and the rule
+has not been changed.
+
+\paragraph{The Kill Switch is not on this dashboard.}
+There is no kill switch toggle visible on the Risk page frontend in the
+current implementation. The kill switch must be operated via the API directly
+(see \texttt{docs/runbook.md} Section 4) or via the command line. The Risk
+page does show the portfolio limits and exposure, not the kill switch state.
+
+\paragraph{BotConfigPanel controls what runs, not what is displayed.}
+Removing a bot from the config panel stops future evaluations for that
+market/strategy pair. It does not delete historical signals or trades. Adding
+a bot starts evaluations from the next daily job at midnight UTC.
+
+\end{document}

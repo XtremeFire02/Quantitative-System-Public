@@ -1,0 +1,1163 @@
+%% ============================================================
+%%  A4 -- Phase 5 Signal Research: BTCUSDT Perpetual Futures
+%%  Compile with: pdflatex A4.tex  (twice for refs)
+%% ============================================================
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{bm}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{corollary}{Corollary}[section]
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+
+\newcommand{\IC}{\mathrm{IC}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Cor}{\mathrm{Cor}}
+\newcommand{\DVOL}{\mathrm{DVOL}}
+\newcommand{\bp}{\,\mathrm{bp}}
+\newcommand{\skew}{\widehat{\gamma}}
+
+\title{\textbf{Phase 5 Signal Research --- BTCUSDT Perpetual Futures}\\[0.4em]
+\large Realized Skewness, Pre-Settlement Flow, and Cross-Exchange Funding Divergence\\[0.3em]
+\large A Complete Treatment from First Principles}
+\author{}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%% ============================================================
+\section{Introduction}
+%% ============================================================
+
+This document records Phase 5 of the BTCUSDT perpetual futures signal
+research programme.  It is a self-contained technical record of the
+design, derivation, and empirical testing of three candidate signal
+families, each motivated by genuinely new economic mechanisms.
+
+The core result of Phase 5 is \textbf{negative}: no standalone
+higher-frequency signal was validated.  Specifically:
+
+\begin{enumerate}
+  \item \textbf{S1a (Realized Skewness) passes the IC screen but is
+        killed in the deep dive.}  The 95\% bootstrap confidence interval
+        crosses zero (lower bound $= -0.008$), the incremental IC after
+        controlling for N3$z$ is not significant ($p = 0.234$), and the
+        signal loses money ($\text{Sharpe} = -2.26$) on days when N3 is
+        not simultaneously active.  S1a's positive IC is an artifact of
+        its overlap with the N3 regime.
+
+  \item \textbf{S1b (Skewness velocity), S2a/S2b (Pre-Settlement Flow),
+        and S3a (Cross-Exchange Funding Divergence) are all killed at the
+        IC screen.}  Each fails at least one of the pre-committed gates.
+
+  \item \textbf{S3b (OKX--Binance divergence) is untestable.}  The OKX
+        public API retains only $\approx 90$ days of funding history,
+        providing 7\% coverage of the OOS window.
+\end{enumerate}
+
+The fundamental finding is that edge in BTCUSDT perpetuals remains
+concentrated in high-DVOL fear events (the N3/P3 regime).  Mechanisms
+that operate at sub-daily timescales require a different research
+infrastructure --- intraday return targets, tick-level data, and explicit
+settlement-mechanics modelling --- that is outside the scope of the
+current 24h-hold framework.
+
+The validated signal stack at the end of Phase 5 is:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Signal & Entry rule & OOS Sharpe & Source \\
+\midrule
+N3 & N3$z > 0.75$ AND DVOL $\geq 54$ & $+2.95$ & A1 \\
+P3 & DD regime AND DVOL $\geq 54$ & $+5.18$ (exclusive) & A2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The report proceeds as follows. Section~\ref{sec:market} introduces
+each new mechanism from first principles: the statistical theory of
+realized skewness, pre-settlement funding mechanics, and the economics
+of cross-exchange funding divergence.  Section~\ref{sec:stats} summarises
+the statistical framework.  Sections~\ref{sec:s1}--\ref{sec:s3} analyse
+each signal family.  Section~\ref{sec:synthesis} synthesises the finding
+on the high-frequency problem.  Section~\ref{sec:conclusion} concludes.
+
+%% ============================================================
+\section{Market Background}
+\label{sec:market}
+%% ============================================================
+
+\subsection{Statistical Moments and Realized Skewness}
+\label{sec:skew_theory}
+
+\subsubsection{Statistical Moments}
+
+For a random variable $X$ with distribution $F$, the \emph{$k$-th
+central moment} is:
+\begin{equation}
+  \mu_k = \E\!\left[(X - \E[X])^k\right]
+  = \int (x - \mu)^k \,\mathrm{d}F(x)
+\end{equation}
+The first four moments have names and interpretations:
+\begin{itemize}[noitemsep]
+  \item $\mu_1 = \E[X]$: the mean (location).
+  \item $\mu_2 = \Var(X)$: the variance (spread around the mean).
+  \item $\mu_3$: the third central moment (asymmetry).
+  \item $\mu_4$: the fourth central moment (tail weight / kurtosis).
+\end{itemize}
+
+\begin{definition}[Standardised Skewness]
+  The \emph{standardised skewness} (or simply skewness) is the third
+  central moment normalised by the cube of the standard deviation:
+  \begin{equation}
+    \gamma = \frac{\mu_3}{\sigma^3}
+           = \frac{\E[(X - \mu)^3]}{\left(\E[(X-\mu)^2]\right)^{3/2}}
+    \label{eq:skewness}
+  \end{equation}
+  $\gamma = 0$ for a symmetric distribution (e.g.\ the Normal).
+  $\gamma < 0$ indicates a \emph{left-skewed} (negatively skewed)
+  distribution: a long left tail with many small positive returns and
+  occasional large negative returns.  $\gamma > 0$ indicates a right-skewed
+  distribution.
+\end{definition}
+
+\subsubsection{Skewness and Crash Risk}
+
+Harvey \& Siddique (2000) show that conditional skewness is a priced
+risk factor in equity markets: assets with negative coskewness with the
+market --- meaning they tend to fall most when the market is also falling
+and volatility is high --- earn higher expected returns as compensation.
+
+Amaya et al.\ (2015) extend this to the \emph{realised} domain: skewness
+computed from high-frequency returns predicts future cross-sectional
+equity returns, with negatively skewed assets subsequently
+outperforming.  Their interpretation is that negative realised skewness
+captures an episode of crash-risk resolution: after a period during which
+returns were systematically left-skewed (frequent small gains interrupted
+by large losses), the distributional shape tends to normalise.
+
+\subsubsection{Realized Skewness in Crypto Perpetuals}
+
+In BTCUSDT perpetuals, the 1-minute log-return distribution has a
+conditional skewness that varies over time.  A sustained period of
+negative realised skewness indicates:
+
+\begin{enumerate}
+  \item Many small upward ticks (the normal background) interrupted by
+        occasional large downward moves.
+  \item The large downward moves are consistent with \emph{forced liquidation
+        events}: as over-levered longs are liquidated, the engine sells
+        into thin markets, creating outsized downward moves relative to
+        the background volatility.
+  \item Once the liquidation cascade has cleared (over-levered positions
+        are gone), the downward skew normalises.
+\end{enumerate}
+
+The Signal S1a tests this contrarian hypothesis: negative 5-day realised
+skewness predicts positive 24h returns, mediated by the liquidation
+exhaustion mechanism.
+
+\subsubsection{Realized vs.\ Implied Skewness}
+
+There is an important distinction between \emph{realized} and
+\emph{implied} skewness.  Implied skewness is extracted from the
+options market (the slope of the implied volatility smile across strikes).
+Realized skewness is computed directly from past price data.  Signal S1
+uses realized skewness because:
+
+\begin{itemize}[noitemsep]
+  \item High-frequency 1-minute data is available at no cost.
+  \item Implied skewness data requires paid access to options tick data.
+  \item Realized skewness is a backward-looking measure directly tied
+        to the liquidation dynamics in the perpetual contract itself.
+\end{itemize}
+
+\subsection{The Funding Settlement Mechanism and Pre-Settlement Flow}
+\label{sec:settlement_theory}
+
+\subsubsection{The 8-Hour Settlement Cycle}
+
+As described in A1 (Section 2.1), Binance settles funding every 8 hours
+(at 00:00, 08:00, and 16:00 UTC).  At each settlement, the cash transfer
+between longs and shorts is:
+\begin{equation}
+  \text{Payment}_\tau = F_\tau \times \text{Notional}
+\end{equation}
+where $F_\tau$ is the funding rate at settlement time $\tau$.
+
+\subsubsection{The Pre-Settlement Flow Hypothesis}
+
+In the minutes preceding a settlement, informed market participants face
+a specific opportunity:
+
+\begin{enumerate}
+  \item If $F_\tau > 0$ (longs will pay), a trader can:
+        \begin{enumerate}
+          \item Enter short before settlement, receiving funding at $\tau$.
+          \item Close the short immediately after settlement.
+          \item Net profit: the funding received minus transaction costs
+                (entry + exit $= 6\bp$).
+        \end{enumerate}
+  \item For this to be profitable, $F_\tau > 6\bp$ (which occurs
+        occasionally during extreme funding episodes).
+\end{enumerate}
+
+At the aggregate market level, pre-settlement shorting creates
+\emph{taker sell pressure} in the 30 minutes before settlement.
+This supply pressure temporarily depresses the mark price, creating
+a predictable post-settlement recovery as the artificial short position
+is unwound.
+
+Signal S2a captures the momentum version: pre-settlement selling predicts
+downward continuation (the shorts are informed about further decline).
+Signal S2b captures the contrarian version: the selling is mechanical
+(funding arbitrage) rather than informed, so it reverts after settlement.
+
+\subsubsection{Why Daily-Resolution Testing is Problematic}
+
+The pre-settlement mechanism operates on the timescale of \emph{the
+settlement event}: the relevant forward return is the next 2--4 hours
+after settlement, not the next 24 hours.  Aggregating the signal to a
+daily (24h) evaluation:
+
+\begin{itemize}
+  \item The signal fires only at 3 settlement events per day.
+  \item The relevant return window (2--4h post-settlement) is entirely
+        contained within the 24h measurement horizon, diluted by 20+
+        additional hours of returns that are not predicted by this signal.
+  \item Three settlement events per day means only $\sim 3$ signal
+        observations per day, not one, violating the daily-IC framework.
+\end{itemize}
+
+This mismatch between signal resolution and evaluation resolution is
+the primary reason S2 is expected to fail the IC screen.
+Section~\ref{sec:s2} confirms this expectation empirically.
+
+\subsection{Cross-Exchange Funding Rate Divergence}
+\label{sec:funding_div_theory}
+
+\subsubsection{Why Funding Rates Differ Across Exchanges}
+
+Major exchanges (Binance, Bybit, OKX, Deribit) each publish their own
+8-hour funding rates for BTCUSDT perpetual futures.  These rates are
+determined by each exchange's own perpetual price relative to their own
+spot index.  They can differ because:
+
+\begin{enumerate}
+  \item \textbf{Speculative demand imbalance:}  Each exchange has a
+        distinct user base.  Retail traders on Bybit may be more
+        aggressively long than those on Binance during a bull phase,
+        driving Bybit funding above Binance funding.
+  \item \textbf{Liquidity differences:}  Thinner markets have larger
+        bid-ask spreads and higher price impact, allowing larger
+        discrepancies from the spot index before arbitrageurs close them.
+  \item \textbf{Institutional flow:}  Large institutional orders often
+        arrive at a single exchange, creating temporary imbalances that
+        persist for the duration of a settlement window.
+\end{enumerate}
+
+\subsubsection{The Arbitrage Channel}
+
+Makarov \& Schoar (2020) document persistent price differences across
+cryptocurrency exchanges and find that arbitrage capital is insufficient
+to close gaps immediately.  The analogous funding rate divergence
+argument:
+
+\begin{proposition}[Funding Divergence Arbitrage]
+  If Bybit's funding rate $F^{\mathrm{Byb}}_\tau > F^{\mathrm{Bin}}_\tau$,
+  an arbitrageur can earn:
+  \[
+    \text{arb profit} = F^{\mathrm{Byb}}_\tau - F^{\mathrm{Bin}}_\tau
+                        - c_{\mathrm{Byb}} - c_{\mathrm{Bin}}
+  \]
+  by simultaneously going short on Bybit (collecting the higher rate)
+  and long on Binance (paying the lower rate).  The position is
+  delta-neutral.
+\end{proposition}
+
+If this arbitrage is active and large, it creates:
+\begin{itemize}[noitemsep]
+  \item \textbf{Short pressure on Bybit:} the arb short raises
+        Bybit's selling pressure, dragging Bybit funding down.
+  \item \textbf{Long pressure on Binance:} the arb long raises
+        Binance buying pressure, pushing Binance prices up.
+\end{itemize}
+
+The directional prediction for Binance: when Bybit funding exceeds
+Binance funding (positive divergence), the arbitrage flow creates
+long pressure on Binance, predicting positive Binance returns.
+
+\subsubsection{Limits to Arbitrage in Crypto Funding}
+
+The hypothesis is theoretically sound, but several friction sources
+limit its practical strength at the daily frequency:
+
+\begin{itemize}
+  \item \textbf{Transaction costs:}  Entering a delta-neutral position
+        on two exchanges requires two round-trips ($\approx 12\bp$ total),
+        so the funding rate must diverge by $> 12\bp$ to be profitable.
+        At the 8-hour horizon, this is a high bar.
+  \item \textbf{Cross-exchange settlement misalignment:}  Different
+        exchanges may have slightly different settlement times, creating
+        basis risk in the arb leg.
+  \item \textbf{Liquidity constraints:}  Large arb positions on thinner
+        exchanges incur market impact costs.
+  \item \textbf{Rapid convergence:}  If arb capital is well-capitalized,
+        any divergence closes within minutes (not hours), leaving no
+        signal at the daily resolution.
+\end{itemize}
+
+Section~\ref{sec:s3} tests empirically whether any residual divergence
+persists long enough to predict 24h Binance returns.
+
+%% ============================================================
+\section{Statistical Framework}
+\label{sec:stats}
+%% ============================================================
+
+This section derives the statistical tools used throughout Phase 5 from
+first principles.  The treatment is self-contained.
+
+\subsection{Log-Returns as Prediction Targets}
+
+For a price series $\{C_t\}$, the \emph{simple return} over a horizon $h$ is
+$\tilde{r}_t^{(h)} = C_{t+h}/C_t - 1$.  The \emph{log-return} is:
+\[
+  r_t^{(h)} = \log\frac{C_{t+h}}{C_t} = \log C_{t+h} - \log C_t
+\]
+Log-returns are preferred for three reasons:
+
+\paragraph{Temporal additivity.}
+Log-returns over sub-periods add exactly: $r_{t,t+h+k} = r_{t,t+h} + r_{t+h,t+h+k}$.
+Simple returns compound multiplicatively, requiring chain multiplication.
+This additivity is essential for equity curve construction: the log-equity
+curve is the cumulative sum of log-returns.
+
+\paragraph{Symmetry.}
+A simple return of $+50\%$ is not cancelled by a subsequent $-50\%$:
+$1.5 \times 0.5 = 0.75 \neq 1$.  Log-returns are symmetric: $+\log 1.5$
+is exactly cancelled by $-\log 1.5$.  This symmetry makes long and short
+positions analytically equivalent, since a short log-return is $-r_t^{(h)}$.
+
+\paragraph{Cost comparability.}
+Transaction costs are approximately constant fractions of notional regardless
+of direction.  A round-trip cost $c_{\text{RT}}$ is subtracted uniformly from
+$r_t^{(h)}$ regardless of its sign or magnitude.  This is exact in log-return
+space and approximate in simple return space.
+
+\paragraph{Basis-point convention.}
+All PnL, drawdown, and per-trade figures are stated in \emph{basis points}:
+$1\bp = 0.01\% = 10^{-4}$.  A log-return of $0.01$ (1\%) equals $100\bp$.
+
+The 24-hour total return including funding payments is:
+\begin{equation}
+  \pi_t^{(24h)} = \log\frac{C_{t+1440}}{C_t}
+                  - \sum_{k:\,\tau_k \in [t, t+1440]} F_{\tau_k}
+\end{equation}
+where $F_{\tau_k}$ is the 8-hour funding rate at settlement time $\tau_k$,
+and the sum covers the three settlements within the hold window.
+Maker round-trip cost: $c_{\mathrm{RT}} = 6\bp$ ($3\bp$ entry, $3\bp$ exit).
+
+\subsection{The Spearman Information Coefficient}
+\label{sec:IC}
+
+\begin{definition}[Spearman IC]
+  Let $\{(s_t, r_t)\}_{t=1}^n$ be a sample of signal-return pairs.
+  Define the rank functions:
+  \[
+    R_t = \rank(s_t) = \left|\{j : s_j \leq s_t\}\right|, \qquad
+    Q_t = \rank(r_t) = \left|\{j : r_j \leq r_t\}\right|
+  \]
+  (ranks from 1 to $n$; midranks for ties).  The Spearman IC is the Pearson
+  correlation applied to the rank vectors:
+  \begin{equation}
+    \IC(s, r) = \frac{\sum_{t=1}^n (R_t - \bar{R})(Q_t - \bar{Q})}
+                     {\sqrt{\sum_{t=1}^n (R_t - \bar{R})^2}
+                      \sqrt{\sum_{t=1}^n (Q_t - \bar{Q})^2}}
+    \label{eq:spearman}
+  \end{equation}
+  For continuous distributions with no ties, $\bar{R} = \bar{Q} = (n+1)/2$
+  and $\sum (R_t - \bar{R})^2 = n(n^2-1)/12$, giving the familiar formula:
+  \[
+    \IC(s, r) = 1 - \frac{6\sum_{t=1}^n d_t^2}{n(n^2 - 1)},
+    \qquad d_t = R_t - Q_t
+  \]
+\end{definition}
+
+\paragraph{Why Spearman over Pearson?}
+The Pearson correlation $\Cor(s, r)$ is the natural measure of
+\emph{linear} predictability.  However:
+\begin{enumerate}[noitemsep]
+  \item Log-return distributions are leptokurtic; a few large-return days
+        dominate the Pearson correlation.  A single outlier can flip the sign.
+  \item The relationship between a signal and $r_t^{(24h)}$ need not be
+        linear.  The Spearman IC is invariant to any monotone transformation
+        of either variable.
+  \item Trading strategies based on signal \emph{rank} (enter when the signal
+        is in the top quintile) are naturally assessed by rank correlation,
+        not level correlation.
+\end{enumerate}
+
+\begin{remark}
+  A negative IC is equally informative as a positive IC of the same
+  magnitude: the signal should simply be traded on the opposite side.
+  We report $|\IC|$ and the sign separately throughout.
+\end{remark}
+
+\subsection{The Breakeven Information Coefficient}
+\label{sec:ICstar}
+
+A statistically significant IC does not imply profitability.  The signal must
+generate sufficient expected gross profit to cover round-trip transaction costs.
+We now derive the minimum IC required.
+
+\begin{proposition}[Breakeven IC]
+  \label{prop:ICstar}
+  Consider a trading strategy that enters long when a standardised signal
+  $z_t \sim \mathcal{N}(0,1)$ is positive and short when $z_t$ is negative,
+  exiting after $h$ bars.  Under the linear-IC model
+  \begin{equation}
+    r_t^{(h)} = \IC \cdot \sigma_r \cdot z_t + \varepsilon_t, \qquad
+    \varepsilon_t \perp z_t,\quad
+    \Var(r_t^{(h)}) = \sigma_r^2
+    \label{eq:linearIC}
+  \end{equation}
+  the expected gross profit per trade equals
+  $\IC \cdot \sigma_r \cdot \sqrt{2/\pi}$.  The signal is profitable
+  against a round-trip cost $c_{\mathrm{RT}}$ if and only if
+  \begin{equation}
+    |\IC| > \IC^* \;\coloneqq\; \frac{c_{\mathrm{RT}}}{\sigma_r \sqrt{2/\pi}}
+    \label{eq:ICstar}
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  Under model~\eqref{eq:linearIC}, since $z_t \perp \varepsilon_t$:
+  \[
+    \E[r_t^{(h)} \mid z_t] = \IC \cdot \sigma_r \cdot z_t
+  \]
+  For a long trade conditional on $z_t > 0$:
+  \begin{align*}
+    \E[r_t^{(h)} \mid z_t > 0]
+    &= \IC \cdot \sigma_r \cdot \E[z_t \mid z_t > 0]
+    = \IC \cdot \sigma_r \cdot \frac{\E[z_t \cdot \mathbf{1}_{z_t > 0}]}
+                                     {P(z_t > 0)}
+  \end{align*}
+  For $z_t \sim \mathcal{N}(0,1)$:
+  \[
+    \E[z_t \mid z_t > 0]
+    = \frac{\int_0^\infty z\,\phi(z)\,\mathrm{d}z}{\tfrac{1}{2}}
+    = 2\int_0^\infty z\,\phi(z)\,\mathrm{d}z
+    = 2\left[-\phi(z)\right]_0^\infty
+    = 2\phi(0)
+    = \sqrt{\tfrac{2}{\pi}}
+  \]
+  By symmetry, a short trade ($z_t < 0$) earns $\E[-r_t^{(h)} \mid z_t < 0]
+  = \IC \cdot \sigma_r \cdot \sqrt{2/\pi}$ as well.
+
+  Expected net profit per trade equals gross minus round-trip cost:
+  \[
+    \E[\text{net profit}] = \IC \cdot \sigma_r \sqrt{2/\pi} - c_{\mathrm{RT}}
+  \]
+  Setting this to zero and solving for IC gives~\eqref{eq:ICstar}.\qed
+\end{proof}
+
+\begin{remark}[Threshold entry]
+  If the strategy only trades when $|z_t| > c$ for some $c > 0$, the expected
+  gross profit per trade is $\IC \cdot \sigma_r \cdot \E[z \mid z > c]$.  Since
+  $\E[z \mid z > c] = \phi(c)/[1-\Phi(c)] > \sqrt{2/\pi}$ for all $c > 0$,
+  the breakeven IC is \emph{lower} than~\eqref{eq:ICstar}.  The formula as
+  stated is conservative: it applies to the strategy that enters on every bar.
+\end{remark}
+
+\begin{remark}[Pearson vs.\ Spearman]
+  Proposition~\ref{prop:ICstar} is stated for the Pearson IC.  The Spearman
+  IC satisfies $\IC_S \approx (6/\pi)\arcsin(\IC_P / 2)$, so
+  $\IC_S \approx \IC_P$ for $|\IC| \ll 1$.  Since all empirical ICs in this
+  report are in $[-0.20, +0.20]$, the same $\IC^*$ formula is applied.
+\end{remark}
+
+For the parameters used throughout Phase 5:
+\begin{itemize}[noitemsep]
+  \item $c_{\mathrm{RT}} = 6\bp$ (maker: $3\bp$ entry, $3\bp$ exit).
+  \item $\sigma_r^{(24h)} \approx 2.135\%$ (empirical OOS volatility).
+  \item $\IC^*_{\mathrm{maker}} \approx 0.035$.
+\end{itemize}
+
+The IC/IC* ratio gives the ``multiple of breakeven'': a ratio of $3\times$
+means the signal generates three times the expected gross profit needed
+to cover costs.
+
+\subsection{The Overlapping-Return Inflation Problem}
+\label{sec:overlap}
+
+The 1-minute BTCUSDT dataset has $T \approx 527{,}040$ observations in the OOS
+2024 window.  If we compute $r_t^{(24\text{h})} = \log(C_{t+1440}/C_t)$
+for every $t$ and treat all pairs as independent, we overstate statistical
+significance severely.
+
+\paragraph{The autocorrelation structure of overlapping returns.}
+Under the assumption that 1-minute log-returns are i.i.d.\ with
+variance $\delta^2$, the 24h log-return decomposes as:
+\[
+  r_t^{(24\text{h})} = \sum_{j=0}^{1439} \Delta_j(t),
+  \qquad \Delta_j(t) = \log\frac{C_{t+j+1}}{C_{t+j}}
+\]
+Two adjacent observations share all but one minute of their window.
+More generally, for lag $k \leq 1440$:
+\begin{align*}
+  \Cov\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
+  &= \Cov\!\left(\sum_{j=0}^{1439}\Delta_j(t),\,
+                 \sum_{j=0}^{1439}\Delta_j(t+k)\right)
+   = (1440 - k)\,\delta^2
+\end{align*}
+since the two sums share exactly $1440 - k$ common terms (for $k < 1440$).
+The autocorrelation at lag $k$ is:
+\begin{equation}
+  \Cor\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
+  = \frac{(1440 - k)\,\delta^2}{1440\,\delta^2}
+  = 1 - \frac{k}{1440}, \qquad 0 \leq k \leq 1440
+  \label{eq:overlap_autocor}
+\end{equation}
+This is a tent function that linearly decays from 1 at lag 0 to 0 at lag 1440.
+
+\paragraph{Effective sample size.}
+For a stationary series with autocorrelation function $\rho_k$, the effective
+sample size for variance estimation is approximately:
+\[
+  n_{\mathrm{eff}} \approx \frac{T}{1 + 2\sum_{k=1}^{\infty} \rho_k}
+\]
+Substituting~\eqref{eq:overlap_autocor}:
+\[
+  1 + 2\sum_{k=1}^{1440-1}\!\!\left(1 - \frac{k}{1440}\right)
+  = 1 + 2 \cdot \frac{1440 \cdot 1439}{2 \cdot 1440}
+  = 1 + 1439
+  = 1440
+\]
+Therefore:
+\begin{equation}
+  n_{\mathrm{eff}} \approx \frac{T}{1440} \approx 366
+  \label{eq:neff}
+\end{equation}
+The effective number of independent 24-hour return observations is
+approximately 366 per year --- one per day --- regardless of whether we
+compute the return at every 1-minute bar or sample once per day.
+
+\paragraph{Practical implication.}
+A $t$-statistic computed from the full $n = 527{,}040$ series is inflated
+by a factor of $\sqrt{1440} \approx 38$ relative to the correct statistic
+based on $n_{\mathrm{eff}} \approx 366$.  \textbf{Solution:} sample every
+$1{,}440$ bars ($n \approx 365$ non-overlapping daily observations per OOS
+year) and apply the block bootstrap.
+
+\subsection{The Block Bootstrap}
+\label{sec:bootstrap}
+
+The block bootstrap (Künsch, 1989; Liu \& Singh, 1992) provides valid inference
+for statistics of dependent time series without parametric assumptions about
+the dependence structure.
+
+\begin{definition}[Non-Overlapping Block Bootstrap]
+  Given a time series $(X_1, \ldots, X_n)$ and a statistic $T_n$:
+  \begin{enumerate}
+    \item Choose block length $\ell$ and form $m = \lfloor n/\ell \rfloor$
+          non-overlapping blocks $B_j = (X_{(j-1)\ell+1}, \ldots, X_{j\ell})$
+          for $j = 1, \ldots, m$.
+    \item Draw $m$ blocks $B_{j_1}^*, \ldots, B_{j_m}^*$ uniformly at random
+          with replacement from $\{B_1, \ldots, B_m\}$.
+    \item Concatenate to form the bootstrap resample
+          $X^* = (B_{j_1}^*, \ldots, B_{j_m}^*)$; trim to length $n$.
+    \item Compute the bootstrap statistic $T_n^* = T_n(X^*)$.
+    \item Repeat $B$ times.  The empirical distribution of
+          $\{T_n^{*(b)}\}_{b=1}^B$ approximates the sampling distribution
+          of $T_n$.
+  \end{enumerate}
+\end{definition}
+
+For inference on $\IC$, the block bootstrap preserves temporal autocorrelation
+within blocks (capturing weekly seasonality, funding-cycle effects, and
+momentum effects) while permuting the dependence structure across blocks.
+
+\paragraph{Block length selection.}
+The block length $\ell$ should exceed the effective autocorrelation decay
+length of the signal-return interaction.  For the daily non-overlapping series
+used here, a block of $\ell = 21$ days (three calendar weeks) captures
+relevant dependence: weekly trading patterns, bi-weekly options gamma pinning
+cycles near expiry, and multi-week momentum effects.
+
+\paragraph{$p$-value computation.}
+For a one-sided test of $H_0 : \IC = 0$ against $H_1 : \IC > 0$:
+\begin{equation}
+  p = \frac{1}{B}\sum_{b=1}^B \mathbf{1}\!\left[\IC^{*(b)} \geq \widehat{\IC}\right]
+  \label{eq:pvalue}
+\end{equation}
+where $B = 2{,}000$ resamples are used throughout.
+
+\subsection{Pass Criteria (Pre-Committed)}
+
+\textbf{IC screen:}
+\begin{itemize}[noitemsep]
+  \item Unfiltered: IC/IC* $> 0.5$ and correct sign.
+  \item DVOL-filtered: ratio $> 1.0$ and bootstrap $p \leq 0.05$.
+  \item Sub-period stability: IC same-sign in $\geq 3$ of 5 OOS half-years.
+\end{itemize}
+
+\textbf{Deep dive (additional gates for IC screen advances):}
+\begin{itemize}[noitemsep]
+  \item 95\% block-bootstrap CI lower bound strictly positive.
+  \item Incremental IC (after N3$z$ control): $p \leq 0.05$.
+  \item Standalone trade frequency $\geq$ N3's $1.2$ trades/week (Phase 5
+        motivation gate: the signal must address the frequency problem).
+\end{itemize}
+
+\subsection{Data}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Dataset & Source & Coverage \\
+\midrule
+1-minute BTCUSDT klines & Binance FAPI & 2023-01-01 to 2026-05-13 \\
+BTC DVOL 1h & Deribit API & 2022-01-01 to 2026-05-15 \\
+Bybit BTCUSDT funding (8h) & Bybit v5 API & 2022-01-01 to 2026-05-15 \\
+OKX BTC-USDT-SWAP funding (8h) & OKX v5 API & 2026-02-15 to 2026-05-15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Bybit funding history: downloaded via \texttt{/v5/market/funding/history}
+in 60-day windows (200 records per call), yielding 4{,}786 settlement
+records.  OKX funding history: \texttt{/api/v5/public/funding-rate-history}
+via cursor-based backward pagination, yielding only 276 records
+($\approx 90$ days of retention --- an API limitation).
+
+%% ============================================================
+\section{S1: Realized Skewness}
+\label{sec:s1}
+%% ============================================================
+
+\subsection{Signal Construction}
+
+\begin{definition}[5-Day Realized Skewness]
+  Let $r_t = \log(C_t / C_{t-1})$ be the 1-minute log return.
+  The rolling 5-day ($W = 5 \times 1{,}440 = 7{,}200$ bars) realized
+  skewness is estimated using the ratio of central moments:
+  \begin{align}
+    \hat{\mu}_t &= \frac{1}{W}\sum_{s=0}^{W-1} r_{t-s} \\
+    \hat{\sigma}^2_t &= \frac{1}{W}\sum_{s=0}^{W-1}(r_{t-s} - \hat{\mu}_t)^2 \\
+    \hat{\mu}^{(3)}_t &= \frac{1}{W}\sum_{s=0}^{W-1}(r_{t-s} - \hat{\mu}_t)^3 \\
+    \hat{\gamma}_t &= \frac{\hat{\mu}^{(3)}_t}{(\hat{\sigma}^2_t)^{3/2} + \varepsilon}
+    \label{eq:realskew}
+  \end{align}
+  where $\varepsilon = 10^{-20}$ prevents division by zero on
+  zero-variance windows.  In vectorised implementation, the rolling
+  central moments are computed as running sums to avoid quadratic
+  time complexity.
+\end{definition}
+
+\begin{definition}[Skewness Signals]
+  \begin{align}
+    \text{S1a}_t &= -\hat{\gamma}_t
+      \quad\text{(contrarian: negative skew $\to$ long)} \\
+    \text{S1b}_t &= -\Delta\hat{\gamma}_t = \hat{\gamma}_{t-1440} - \hat{\gamma}_t
+      \quad\text{(velocity: skew becoming more negative $\to$ long)}
+  \end{align}
+  S1a is positive (suggesting a long) when 5-day realized skewness is
+  negative (many small gains, occasional large losses).  S1b is positive
+  when skewness is becoming more negative (the fat left tail is
+  growing in the recent window).
+\end{definition}
+
+\paragraph{Window length choice.}
+The 5-day window ($W = 7{,}200$ bars) is chosen to capture the timescale
+of individual liquidation cascade events.  A cascade typically plays out
+over 12--48 hours; the 5-day window ensures the skewness estimate is
+dominated by the most recent event without being swamped by older
+background dynamics.  Longer windows (30-day) would dilute the signal;
+shorter windows (1-day) would be too noisy at the individual bar level.
+
+\paragraph{Descriptive statistics.}
+Over the OOS daily frame:
+S1a mean $= -0.021$, std $= 0.284$, range $[-1.39, +1.31]$.
+$\Cor(\text{S1a}, N3z) = +0.126$ (low collinearity).
+
+\subsection{IC Screen Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrrl}
+\toprule
+Signal & IC & Ratio & $p$ & IC (filt.) & Ratio (filt.) & Stab. & Verdict \\
+\midrule
+\textbf{S1a level}  & $+0.058$ & $1.94\times$ & $0.039$ & $+0.097$ & $3.79\times$ & $4/5$ & \textbf{ADVANCE} \\
+S1b velocity        & $-0.019$ & $0.63\times$ & $0.754$ & $-0.022$ & $0.86\times$ & $2/5$ & KILL \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{S1b kill rationale.}
+The velocity of skewness reversion (S1b) is in the wrong direction
+($\IC = -0.019$) and fails $p = 0.754$.  The speed at which skewness
+is becoming more negative adds no directional information about the 24h
+return.  This is consistent with the hypothesis that the level of
+skewness (how negative it is) matters for the exhaustion call, not its
+rate of change (how fast it is getting more negative).
+
+\paragraph{S1a advancing.}
+S1a passes the unfiltered screen: IC $= +0.058$ ($1.94\times$),
+$p = 0.039$ (below $0.05$), $4/5$ sub-period stability.  The DVOL
+$\geq 50$ filter raises IC substantially to $+0.097$ ($3.79\times$),
+consistent with the pattern from N3, P3, and Q5c: the signal is
+concentrated in the fear regime.  S1a advances to the deep dive.
+
+\subsection{S1a Deep Dive}
+\label{sec:s1a_deep}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+OOS IC (non-overlapping daily) & $+0.058$ ($1.94\times$ ratio) \\
+Block-bootstrap $p$ & $0.039$ \\
+\textbf{95\% CI lower bound} & $\mathbf{-0.008}$ \textbf{--- fails: not strictly positive} \\
+DVOL $\geq 50$ filtered IC & $+0.097$ ($3.79\times$), $p = 0.021$ \\
+Sub-period stability & $4/5$ OOS half-years \\
+Incremental IC $p$ (after N3$z$) & $0.234$ --- not significant \\
+$\Cor(\text{S1a}, N3z)$ & $+0.126$ \\
+\midrule
+Standalone Sharpe (S1a $\geq 0.5$, DVOL $\geq 50$) & $+1.55$ ($n = 80$ trades, $0.7$/wk) \\
+Standalone Sharpe \emph{excl.\ N3$z$ regime} & $-2.26$ --- loses money \\
+\midrule
+Combined (S1a $\geq 0.5$ AND N3$z \geq 0$, DVOL $\geq 50$) & $+8.85$ ($n = 35$ trades, $0.3$/wk) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Gate-by-Gate Assessment}
+
+\textbf{Gate 1 --- 95\% CI lower bound.}
+The block-bootstrap 95\% confidence interval for the IC is $(-0.008, +0.124)$.
+The lower bound of $-0.008$ is \emph{negative}: the sampling distribution
+of the IC extends below zero.  We cannot rule out that the true IC is
+zero or negative.  This gate fails.
+
+To understand why the $p$-value ($0.039$) and the CI lower bound
+($-0.008$) appear contradictory: the $p$-value tests the one-sided
+null ($\IC \leq 0$), and $p = 0.039$ means we barely reject it.
+The CI is a two-sided interval; its lower bound being $-0.008$ is
+mathematically consistent with $p = 0.039$ and means the evidence
+is marginal.  Both the $p$-value and the CI tell the same story:
+the IC of $+0.058$ is at the boundary of statistical credibility
+with $n \approx 365$ observations.
+
+\textbf{Gate 2 --- Incremental IC after N3$z$ control.}
+Projecting S1a onto N3$z$ and taking the residual:
+\[
+  \tilde{\text{S1a}}_t = \text{S1a}_t - \hat{\beta}_0 - \hat{\beta}_1 N3z_t
+\]
+The IC of $\tilde{\text{S1a}}$ against 24h returns has $p = 0.234$.
+After removing the N3$z$ component, S1a has no significant
+residual predictive power.  This is the critical finding: \textbf{the
+IC of S1a is driven by its correlation with N3$z$}, not by the skewness
+mechanism independently.
+
+Why does this happen?  Both S1a and N3$z$ are elevated on high-DVOL
+days.  The correlation is $+0.126$ (small but non-negligible).  Days of
+negative realised skewness tend to coincide with high DVOL because both
+are elevated by the same liquidation cascade events.  After controlling
+for N3$z$, there is no incremental directional information in the
+skewness beyond what is already captured by the fear-resolution mechanism.
+
+\textbf{Gate 3 --- Standalone performance outside the N3 regime.}
+When N3$z$ is not firing (below the activation threshold), S1a alone
+achieves Sharpe $= -2.26$.  This means \emph{S1a loses money on days
+when N3 is not active}.  On these days, negative realised skewness
+reflects momentum continuation (the left-skewed return distribution
+persists as the downtrend continues) rather than the exhaustion-bounce
+mechanism that makes the contrarian bet profitable.
+
+\textbf{Gate 4 --- Phase 5 frequency gate.}
+Even the combined rule (S1a AND N3$z$, DVOL $\geq 50$) fires only
+$0.3$ times per week --- substantially less than N3 alone ($1.2$/wk).
+Phase 5 was motivated by the desire to \emph{increase} trade frequency;
+S1a decreases it.  Adding S1a as a filter on N3 improves quality
+(Sharpe $+8.85$ vs N3's $+2.95$) at the cost of frequency (0.3 vs 1.2
+trades/week), the opposite of what Phase 5 sought.
+
+\subsection{S1a Kill Rationale and Residual Value}
+
+\textbf{S1a is formally killed as a standalone signal.}
+
+The four deep-dive gates tell a consistent story:
+\begin{itemize}
+  \item The statistical evidence is marginal (CI crosses zero).
+  \item The predictive power is not independent of N3$z$.
+  \item Outside the N3 regime, S1a loses money.
+  \item S1a reduces trade frequency rather than increasing it.
+\end{itemize}
+
+However, the combination N3$z \geq 0$ AND S1a $\geq 0.5$ (DVOL $\geq 50$)
+achieves Sharpe $+8.85$ on 35 trades.  This is noted: S1a may be useful
+as a \emph{quality filter} on N3 entries in a future phase if the
+frequency constraint is relaxed.  But it cannot be the standalone
+higher-frequency signal Phase 5 sought.
+
+%% ============================================================
+\section{S2: Pre-Settlement Flow}
+\label{sec:s2}
+%% ============================================================
+
+\subsection{Signal Construction}
+
+\begin{definition}[Taker Order Flow Imbalance]
+  Let $V^{\mathrm{buy}}_t$ and $V_t$ be the 1-minute taker-buy volume
+  and total volume from Binance klines.  The taker fraction and signed
+  flow at bar $t$ are:
+  \begin{align}
+    \phi_t &= \frac{V^{\mathrm{buy}}_t}{V_t \vee \varepsilon}
+    \quad\in [0,1] \\
+    f_t &= 2\phi_t - 1 \quad\in [-1, +1]
+  \end{align}
+  where $\varepsilon = 10^{-8}$ prevents division by zero on zero-volume bars.
+  $f_t = +1$ means 100\% of volume was taker-buy; $f_t = -1$ means 100\%
+  was taker-sell.
+\end{definition}
+
+\begin{definition}[Pre-Settlement Flow Signals]
+  The 30-minute cumulative signed flow before each settlement is:
+  \begin{equation}
+    F^{(30)}_t = \sum_{s=t-29}^{t} f_s
+    \quad\in [-30, +30]
+  \end{equation}
+  This is computed at all bars but evaluated only at the 480 bars
+  ($= 8\text{h} \times 60$) preceding each settlement.
+  Let $\lambda_t$ be the current 8-hour funding rate.  The signals:
+  \begin{align}
+    \text{S2a}_t &= \phantom{-}F^{(30)}_t \times (-\lambda_t)
+      \quad\text{(momentum)} \\
+    \text{S2b}_t &= -F^{(30)}_t \times (-\lambda_t)
+      \quad\text{(contrarian)}
+  \end{align}
+  S2a is positive when taker selling coincides with a positive funding
+  rate: sellers are anticipated informed traders.  S2b reverses the
+  sign: the selling is mechanical arbitrage that reverts post-settlement.
+\end{definition}
+
+\subsection{IC Screen Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrrl}
+\toprule
+Signal & IC & Ratio & $p$ & IC (filt.) & Ratio (filt.) & Stab. & Verdict \\
+\midrule
+S2a momentum   & $+0.001$ & $0.04\times$ & $0.484$ & $+0.006$ & $0.23\times$ & $3/5$ & KILL \\
+S2b contrarian & $+0.014$ & $0.47\times$ & $0.153$ & $+0.002$ & $0.02\times$ & $2/5$ & KILL \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Kill Rationale}
+
+Both S2 variants are cleanly killed.  S2a's IC of $+0.001$ ($0.04\times$)
+is effectively zero.  S2b's unfiltered ratio of $0.47\times$ is just below
+the $0.5\times$ threshold, and the DVOL-filtered IC collapses to
+$0.02\times$ --- statistically and economically indistinguishable from noise.
+
+The empirical result confirms the theoretical expectation from
+Section~\ref{sec:settlement_theory}: the pre-settlement mechanism
+operates on 2--4 hour timescales and is invisible in the 24h return
+target.  At the daily frequency, three daily settlement events are
+aggregated into a single signal observation, averaging away any
+directional content.
+
+\begin{remark}
+  Testing S2 at the 8-hour forward return horizon (sampling at each
+  settlement event, $n \approx 3 \times 365 = 1095$ OOS observations/year)
+  would be the correct evaluation framework.  This requires:
+  (1) a settlement-event-level dataset, (2) 8h forward returns aligned
+  to each settlement, and (3) a modified block bootstrap block length
+  of $\approx 3 \times 21 = 63$ settlement events.  This is a Phase 6
+  scope item.
+\end{remark}
+
+%% ============================================================
+\section{S3: Cross-Exchange Funding Divergence}
+\label{sec:s3}
+%% ============================================================
+
+\subsection{Signal Construction}
+
+\begin{definition}[Funding Rate Divergence]
+  For each 8-hour settlement bar, the raw Bybit--Binance divergence is:
+  \begin{equation}
+    \delta^{(\mathrm{Byb})}_t = F^{(\mathrm{Byb})}_t - F^{(\mathrm{Bin})}_t
+    \label{eq:diverg}
+  \end{equation}
+  where $F^{(\mathrm{Byb})}_t$ and $F^{(\mathrm{Bin})}_t$ are the
+  respective 8-hour funding rates, aligned to the nearest Binance
+  settlement timestamp.
+
+  The signal is $z$-scored over a 30-settlement (90-day) rolling window:
+  \begin{equation}
+    \text{S3a}_t = \frac{\delta^{(\mathrm{Byb})}_t - \mu_{30}(\delta^{(\mathrm{Byb})})}
+                        {\sigma_{30}(\delta^{(\mathrm{Byb})})}
+    \label{eq:s3a}
+  \end{equation}
+  S3b uses the OKX--Binance divergence with the same construction.
+\end{definition}
+
+\subsection{IC Screen Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrrl}
+\toprule
+Signal & IC & Ratio & $p$ & IC (filt.) & Ratio (filt.) & Stab. & Verdict \\
+\midrule
+S3a Bybit--Binance & $-0.034$ & $1.14\times$ & $0.840$ & $-0.018$ & $0.71\times$ & $2/5$ & KILL \\
+S3b OKX--Binance   & \multicolumn{6}{l}{\emph{Untestable: OKX API retains $\approx 90$ days only (7\% OOS coverage)}} & KILL \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Kill Rationale}
+
+\paragraph{S3a (Bybit--Binance).}
+The IC is in the \emph{wrong} direction: $-0.034$, with $p = 0.840$
+(one-sided against the positive direction).  A positive Bybit--Binance
+divergence is weakly associated with \emph{negative} subsequent Binance
+returns --- the opposite of the arbitrage-flow prediction.
+
+The most likely explanation: at the 8-hour aggregation level, funding
+rate divergences are highly noisy.  The Bybit and Binance rates are
+computed from different underlying spot indices, different perpetual
+order books, and different user bases.  By the time the 8-hour average
+is reported, any cross-exchange arbitrage opportunity has already been
+closed.  The residual divergence in the reported rates is dominated by
+the difference in reference spot indices (not by speculative demand)
+and contains no actionable directional information.
+
+The $2/5$ sub-period stability confirms the IC sign is not consistent
+across periods.
+
+\paragraph{S3b (OKX--Binance).}
+The OKX v5 public endpoint (\texttt{/api/v5/public/funding-rate-history})
+returned 276 records covering approximately 90 days.  The OKX API does
+not retain longer history on this endpoint.  Against the $\approx 3{,}800$-bar
+OOS window, this is 7\% coverage --- insufficient for a meaningful IC
+screen.  S3b is formally recorded as \textbf{untestable}.
+
+%% ============================================================
+\section{Synthesis: The High-Frequency Problem}
+\label{sec:synthesis}
+%% ============================================================
+
+\subsection{Why All Phase 5 Signals Failed}
+
+Phase 5 was motivated by a specific objective: find signals with higher
+trade frequency than N3 ($1.2$ trades/week) and P3.  The fundamental
+finding is that \emph{no such signal exists at the daily-resolution IC
+framework used in this programme.}
+
+Table~\ref{tab:kills} summarises all kills:
+
+\begin{table}[H]
+\centering
+\caption{Phase 5 complete kill log}
+\label{tab:kills}
+\begin{tabular}{lll}
+\toprule
+Signal & Mechanism tested & Kill reason \\
+\midrule
+S1a Skewness level & Liquidation exhaustion & CI lower $= -0.008$; incremental IC $p = 0.234$ \\
+S1b Skewness velocity & Cascade acceleration & Wrong direction, $p = 0.754$ \\
+S2a Pre-settlement (momentum) & Informed pre-settlement selling & Near-zero IC ($0.04\times$) \\
+S2b Pre-settlement (contrarian) & Mechanical arb reversal & Below threshold ($0.47\times$) \\
+S3a Bybit--Binance & Cross-exchange arb flow & Wrong direction, $p = 0.840$ \\
+S3b OKX--Binance & Cross-exchange arb flow & OKX API retains $\approx 90$ days only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The Structural Concentration of Edge in the Fear Regime}
+
+The S1a deep dive reveals the structural reason why higher-frequency
+signals are difficult to find within the current framework:
+
+\begin{itemize}
+  \item S1a has IC $= +0.058$ overall.
+  \item S1a has IC $\approx 0$ (or negative) in the low-DVOL regime.
+  \item S1a has IC $= +0.097$ in the DVOL $\geq 50$ regime.
+  \item After controlling for the DVOL regime (via N3$z$), S1a's
+        incremental IC is $p = 0.234$ --- not significant.
+\end{itemize}
+
+The inescapable conclusion is that \emph{every mechanism tested so far
+that predicts positive 24h BTC returns at the daily frequency does so
+because it is a proxy for the same underlying state: elevated fear
+(high DVOL) followed by mean reversion of that fear.}
+
+This is a structural feature of the market, not a measurement artifact.
+The economics of perpetual futures mean that the primary source of
+exploitable edge at the 24h daily-frequency horizon is the
+liquidation-exhaustion cycle in high-DVOL environments.  N3 and P3
+each measure different observable manifestations of this cycle
+(IV $z$-score, and OI-price regime, respectively).  S1a (skewness)
+is a third manifestation of the same cycle, which is why it has IC
+after conditioning on DVOL but no incremental IC after conditioning on N3$z$.
+
+\subsection{What Higher-Frequency Research Requires}
+
+A genuine higher-frequency strategy in crypto perpetuals requires
+a different research infrastructure:
+
+\begin{enumerate}
+  \item \textbf{Intraday forward returns.}  Evaluating S2 at the 8h
+        horizon requires $\sim 1{,}000$ OOS observations per year at
+        3 settlements/day, and a modified statistical framework
+        (shorter blocks, settlement-aligned sampling).
+
+  \item \textbf{Tick-level data for adverse selection.}  Pre-settlement
+        flow signals require the ability to distinguish informed from
+        uninformed taker flow, which requires bid-ask spread and depth
+        data at the order book level --- not just the aggregated 1-minute
+        kline data.
+
+  \item \textbf{Explicit settlement mechanics modelling.}  The pre-settlement
+        window begins 480 minutes before the settlement; exactly modelling
+        which bars fall within this window requires precise settlement time
+        data, not just the funding rate time series.
+
+  \item \textbf{Alternative liquidation data.}  The Q6 (liquidation
+        exhaustion) hypothesis (Phase 4) remains untested.  Intraday
+        liquidation data from Coinalyze or CoinGlass would allow testing
+        Q6 at the event level (1--4h after a large cascade).
+\end{enumerate}
+
+These infrastructure items define the Phase 6 research scope.
+
+%% ============================================================
+\section{Summary and Kill Log}
+\label{sec:summary}
+%% ============================================================
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Signal & Verdict & Primary reason \\
+\midrule
+S1a Realized skewness (contrarian) & Kill & CI lower $= -0.008$; incremental IC $p = 0.234$;
+  loses money outside N3 \\
+S1b Skewness velocity & Kill & Wrong direction ($2/5$ stability, $p = 0.754$) \\
+S2a Pre-settlement flow (momentum) & Kill & Near-zero IC ($0.04\times$), $p = 0.484$ \\
+S2b Pre-settlement flow (contrarian) & Kill & Below threshold ($0.47\times$); DVOL-filtered $0.02\times$ \\
+S3a Bybit--Binance divergence & Kill & Wrong direction ($2/5$, $p = 0.840$) \\
+S3b OKX--Binance divergence & Untestable & OKX API retains $\approx 90$ days only \\
+\midrule
+\multicolumn{3}{l}{\textbf{Phase 5 net result: zero new signals validated.  N3 + P3 stack unchanged.}} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Research scripts: \texttt{data/download\_phase5.py},
+\texttt{research/active/p5/27\_phase5\_ic\_screen.py},
+\texttt{research/active/p5/28\_s1a\_deep\_dive.py}.
+
+%% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+%% ============================================================
+
+Phase 5 tested three signal families and validated none.  The key results:
+
+\begin{enumerate}
+  \item \textbf{Realized skewness (S1a) is a proxy for N3, not an
+        independent signal.}  The 5-day negative realized skewness has IC
+        $= +0.058$ at the IC screen, but fails the deep dive: the 95\%
+        CI crosses zero, and after controlling for N3$z$, the incremental
+        IC has $p = 0.234$.  S1a loses money ($\text{Sharpe} = -2.26$)
+        on days when N3 is not active.  Every mechanism tested in Phase 5
+        that predicts positive BTC returns at the daily frequency does so
+        because it correlates with the same high-DVOL exhaustion state
+        that N3 already captures.
+
+  \item \textbf{Pre-settlement flow (S2) is invisible at daily resolution.}
+        The settlement-arbitrage mechanism exists in theory, but the
+        relevant forward return window (2--4h post-settlement) is
+        subsumed by the 24h IC evaluation frame.  Near-zero ICs ($0.04\times$
+        and $0.47\times$) confirm the signal is indistinguishable from
+        noise at daily sampling.
+
+  \item \textbf{Cross-exchange funding divergence (S3) has no edge at
+        the 8-hour aggregation level.}  Well-capitalised arbitrageurs
+        close Bybit--Binance funding gaps within minutes, leaving no
+        signal in the reported 8-hour rates.  S3a's IC is in the wrong
+        direction ($-0.034$, $p = 0.840$).
+
+  \item \textbf{The high-frequency problem is structural, not accidental.}
+        Edge in BTCUSDT perpetuals at the 24h daily-frequency horizon
+        is concentrated in the high-DVOL fear regime.  Finding genuinely
+        higher-frequency alpha requires intraday return targets, tick-level
+        data, and explicit settlement-mechanics modelling.  This is Phase 6.
+\end{enumerate}
+
+The production signal stack remains N3 and P3.  S1a's combined performance
+with N3 (Sharpe $+8.85$ on 35 trades, $0.3$/week) is noted as a
+potential quality-filter application for N3 entries, but is not deployed
+due to the frequency reduction and the statistically marginal IC evidence.
+
+\vspace{1em}
+\noindent\textit{Data: Binance FAPI 1m klines (2023--2026); Deribit BTC
+DVOL 1h (2022--2026); Bybit BTCUSDT 8h funding rates (2022--2026,
+4{,}786 records); OKX BTC-USDT-SWAP 8h funding rates ($\approx$90 days,
+276 records).}
+
+%% ============================================================
+\section*{References}
+%% ============================================================
+\begingroup
+\setlength{\parindent}{-2em}
+\setlength{\leftskip}{2em}
+\setlength{\parskip}{6pt}
+\small
+
+Amaya, D., Christoffersen, P., Jacobs, K., \& Vasquez, A. (2015). Does realized skewness predict the cross-section of equity returns? \textit{Journal of Financial Economics}, \textit{118}(1), 135--167. \url{https://doi.org/10.1016/j.jfineco.2015.02.012}
+
+Harvey, C. R., \& Siddique, A. (2000). Conditional skewness in asset pricing tests. \textit{The Journal of Finance}, \textit{55}(3), 1263--1295. \url{https://doi.org/10.1111/0022-1082.00247}
+
+Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. \textit{The Annals of Statistics}, \textit{17}(3), 1217--1241. \url{https://doi.org/10.1214/aos/1176347265}
+
+Liu, R. Y., \& Singh, K. (1992). Moving blocks jackknife and bootstrap capture weak convergence. In R. LePage \& L. Billard (Eds.), \textit{Exploring the Limits of Bootstrap} (pp. 225--248). Wiley.
+
+Makarov, I., \& Schoar, A. (2020). Trading and arbitrage in cryptocurrency markets. \textit{Journal of Financial Economics}, \textit{135}(2), 293--319. \url{https://doi.org/10.1016/j.jfineco.2019.07.001}
+
+\endgroup
+
+\end{document}

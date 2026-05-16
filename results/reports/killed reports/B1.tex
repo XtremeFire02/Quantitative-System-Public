@@ -1,0 +1,1133 @@
+%% ============================================================
+%%  A3 -- Phase 4 Signal Research: BTCUSDT Perpetual Futures
+%%  Compile with: pdflatex A3.tex  (twice for refs)
+%% ============================================================
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{parskip}
+\usepackage{bm}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{corollary}{Corollary}[section]
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+
+\newcommand{\IC}{\mathrm{IC}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Cor}{\mathrm{Cor}}
+\newcommand{\DVOL}{\mathrm{DVOL}}
+\newcommand{\bp}{\,\mathrm{bp}}
+\newcommand{\OI}{\mathrm{OI}}
+
+\title{\textbf{Phase 4 Signal Research --- BTCUSDT Perpetual Futures}\\[0.4em]
+\large Mark-Index Basis, Cross-Asset Implied Volatility, and Liquidation Exhaustion\\[0.3em]
+\large A Complete Treatment from First Principles}
+\author{}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%% ============================================================
+\section{Introduction}
+%% ============================================================
+
+This document records Phase 4 of the BTCUSDT perpetual futures signal
+research programme.  It is a self-contained technical record covering
+the design, derivation, and empirical validation of three genuinely new
+signal families, each based on a distinct economic mechanism.
+
+The core result is: \textbf{Q5c (BTC-excess implied volatility) advances
+to full validation with OOS Sharpe $+3.30$ ($n = 105$ trades,
+block-bootstrap $p < 0.0005$), is independent of N3 (incremental IC
+ratio $2.70\times$, $\Cor = +0.342$), and subsequently superseded when
+the research programme pivoted to higher-frequency signal exploration
+in Phase 5.}  All other Phase 4 signals are killed or untestable.
+
+The validated signal stack entering Phase 4 is:
+\begin{enumerate}
+  \item N3 (DVOL $z$-score $\geq 0.75$, DVOL $\geq 54$): OOS Sharpe $+2.95$,
+        $1.2$ trades/week (\textbf{A1}).
+  \item P3 (OI-Price Divergence, DD regime, DVOL $\geq 54$): OOS Sharpe $+5.18$
+        on exclusive trades, independent of N3 (\textbf{A2}).
+\end{enumerate}
+
+Phase 4 tests three genuinely new mechanisms, none overlapping with
+previously killed signals:
+
+\begin{description}
+  \item[Q4 --- Mark-Index Basis]
+        The instantaneous premium or discount of the perpetual mark price
+        relative to the Binance spot index, measured continuously rather
+        than averaged over 8-hour funding windows.
+
+  \item[Q5 --- ETH-BTC Cross-DVOL]
+        Three variants exploiting the cross-asset relationship between
+        Deribit BTC and ETH implied volatility: ETH $z$-score alone (Q5a),
+        the product of both $z$-scores (Q5b), and the difference
+        BTC$_{N3z}$ $-$ ETH$_{N3z}$ (Q5c, the ``BTC-excess'' signal).
+
+  \item[Q6 --- Liquidation Exhaustion]
+        A spike in daily forced long-liquidation notional marks the
+        final stage of a leveraged sell-off.  Data source: Binance Data
+        Vision daily liquidation snapshots.
+\end{description}
+
+The report proceeds as follows. Section~\ref{sec:market} introduces
+the relevant market structures from first principles: the mark-index
+basis and funding mechanics, cross-asset implied volatility and spillover
+theory, and crypto liquidation cascade dynamics.
+Section~\ref{sec:stats} summarises the statistical framework.
+Sections~\ref{sec:q4}--\ref{sec:q6} analyse each signal.
+Section~\ref{sec:discussion} provides a synthesis.
+Section~\ref{sec:conclusion} concludes.
+
+%% ============================================================
+\section{Market Background}
+\label{sec:market}
+%% ============================================================
+
+\subsection{The Perpetual Mark Price and the Basis}
+\label{sec:basis_theory}
+
+\subsubsection{Mark Price Construction}
+
+Binance computes the perpetual mark price $M_t$ as a function of the
+spot index $I_t$ and a smoothed premium:
+\begin{equation}
+  M_t = I_t \times \left(1 + \mathrm{FairBasis}_t\right)
+  \label{eq:mark}
+\end{equation}
+where $\mathrm{FairBasis}_t$ is an exponentially weighted average of
+recent premium index observations.  The \emph{premium index} at each
+minute is:
+\begin{equation}
+  P_t^{\text{idx}} = \frac{\max(B_t, I_t) - \min(A_t, I_t)}{I_t}
+  - \max(A_t, I_t) \cdot \frac{r_{\text{int}}}{8} / I_t
+  \label{eq:premidx}
+\end{equation}
+where $B_t$ is the best bid price of the perpetual, $A_t$ is the best
+ask price, and $r_{\text{int}} = 0.03\%$ is the 8-hour interest rate.
+The second term is a small interest adjustment.  In practice,
+$P_t^{\text{idx}} \approx (\bar{P}_t - I_t) / I_t$, where $\bar{P}_t$
+is the mid-price of the perpetual.
+
+\subsubsection{The Basis and its Relationship to Funding}
+
+\begin{definition}[Mark-Index Basis]
+  The \emph{basis} at time $t$ is the relative premium of the perpetual
+  mark price over the spot index:
+  \begin{equation}
+    b_t = \frac{M_t - I_t}{I_t}
+    \label{eq:basis}
+  \end{equation}
+  A positive basis means the perpetual trades above spot (net long
+  demand); a negative basis means the perpetual trades below spot
+  (net short demand or forced long selling).
+\end{definition}
+
+The basis and the 8-hour funding rate are directly linked.  The funding
+rate at settlement time $\tau$ (every 8 hours) is approximately:
+\begin{equation}
+  F_\tau \approx \frac{1}{480}\sum_{t=\tau-480}^{\tau} P_t^{\text{idx}}
+               \approx \bar{b}_{[\tau-480,\tau]}
+\end{equation}
+where the average is over the 480 minutes in the preceding settlement
+window.  This means:
+
+\begin{itemize}
+  \item A persistently positive basis in the settlement window implies
+        a positive funding rate: longs will pay shorts.
+  \item A persistently negative basis implies a negative funding rate:
+        shorts will pay longs.
+\end{itemize}
+
+The key difference from the H1 funding signal (killed in Phase 1) is
+resolution: the 8-hour funding rate is a \emph{lagging average} of the
+basis over the preceding window.  The basis $b_t$ is the \emph{real-time}
+instantaneous measure.
+
+\subsubsection{Two Competing Hypotheses}
+
+The basis generates two economically opposite predictions:
+
+\begin{description}
+  \item[Q4a Momentum:] A positive basis (perpetual at premium to spot)
+        signals excess long demand.  Longs are willing to hold and pay the
+        upcoming funding, indicating conviction.  The premium persists and
+        predicts positive 24h returns.
+
+  \item[Q4b Contrarian:] A negative basis (perpetual at discount to spot)
+        signals forced selling by longs who can no longer bear the cost of
+        a negative funding rate.  Once this forced selling clears, the
+        discount reverses and predicts positive 24h returns.
+\end{description}
+
+These hypotheses make opposite sign predictions for the IC.  Empirically
+testing both is standard practice: the data determines which mechanism
+dominates.
+
+\subsubsection{Descriptive Statistics}
+
+The basis series is computed from the Binance FAPI premium index klines
+(\texttt{indexPriceLine} and \texttt{markPrice} 1-minute bars) over the
+2023-01-01 to 2026-05-13 OOS window:
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Statistic & Mean (bp) & Std (bp) & Min (bp) & Max (bp) \\
+\midrule
+OOS daily basis & $-2.62$ & $3.51$ & $-7.12$ & $+12.21$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The mean daily basis of $-2.62\bp$ reflects the persistent longs-paying
+environment (positive average funding rate) during the sample: when
+longs pay funding, the equilibrium basis drifts slightly negative as
+perpetual prices are dragged toward spot.  The range of $[-7.12,
++12.21]\bp$ encompasses both deep discounts (acute forced long selling)
+and large premiums (euphoric long demand).
+
+\subsection{Cross-Asset Implied Volatility and Spillover}
+\label{sec:crossvol_theory}
+
+\subsubsection{The Deribit ETH DVOL}
+
+Just as Deribit publishes a BTC 30-day implied volatility index
+(BTCVOL / DVOL, described fully in A1 Section 2.2), it publishes an
+equivalent index for ETH options:
+
+\begin{definition}[ETH DVOL]
+  The Deribit ETH implied volatility index (\texttt{ETHDVOL}) is
+  constructed by the same model-free VIX methodology (Britten-Jones
+  \& Neuberger, 2000) applied to ETH/USD options on Deribit, targeting
+  a 30-calendar-day constant maturity.  It is published at hourly
+  frequency in annualised percentage units:
+  \[
+    \DVOL^{\mathrm{ETH}}_t = 100 \times \sqrt{\hat{\sigma}^2_{30\mathrm{d}}(\mathrm{ETH}) \times 365}
+  \]
+\end{definition}
+
+The two indices share a common fear factor (broad crypto market
+uncertainty) but capture distinct liquidation dynamics: ETH has its own
+leverage ecosystem, DeFi protocol liquidations, and smart-contract-specific
+risks that can cause ETH vol to spike independently of BTC vol.
+
+Over the sample period (2022--2026, 38{,}281 hourly observations):
+\begin{itemize}[noitemsep]
+  \item Mean BTC DVOL: 52.4\%; mean ETH DVOL: 58.1\%.
+  \item Pearson correlation of the two raw series: $+0.82$.
+  \item Pearson correlation of the two 30-day $z$-scores: $+0.696$.
+\end{itemize}
+
+The high raw correlation ($+0.82$) reflects the common macro fear factor.
+The lower $z$-score correlation ($+0.696$) reflects that the two assets
+have distinct short-term deviation patterns around their own 30-day
+histories --- the component exploited by Q5c.
+
+\subsubsection{Volatility Spillover Theory}
+
+Diebold \& Yilmaz (2012) quantify directional volatility spillovers
+across financial markets using a forecast error variance decomposition
+of a vector autoregression.  Their finding is that implied volatility
+in one asset predicts future realised volatility in correlated assets
+--- a ``spillover'' from the fear of one market to the price dynamics of
+another.
+
+In crypto, BTC and ETH are the two dominant assets.  They share a
+common speculative demand factor (``crypto beta''), meaning:
+\begin{itemize}[noitemsep]
+  \item A broad crypto fear event tends to spike both BTC and ETH DVOL
+        simultaneously.
+  \item A BTC-specific event (e.g., a large miner capitulation, a
+        Bitcoin ETF approval) may spike BTC DVOL without equally affecting
+        ETH DVOL.
+  \item An ETH-specific event (e.g., a DeFi hack, a major protocol
+        upgrade) may spike ETH DVOL without equally affecting BTC DVOL.
+\end{itemize}
+
+This distinction motivates three signal variants:
+
+\begin{description}
+  \item[Q5a:] ETH N3$z$ alone predicts BTC returns (ETH fear leads BTC
+        price recovery).
+  \item[Q5b:] The product BTC$_{N3z} \times$ ETH$_{N3z}$ captures joint
+        confirmation (both assets simultaneously fearful signals a broad
+        crypto stress event with a strong mean-reversion).
+  \item[Q5c:] The difference BTC$_{N3z} -$ ETH$_{N3z}$ captures
+        BTC-specific fear elevation above the crypto baseline.  When BTC's
+        $z$-score substantially exceeds ETH's, BTC-specific forced selling
+        has exceeded systemic fear.  The hypothesis is that this excess
+        reverts in the 24-hour window.
+\end{description}
+
+\subsubsection{The BTC-Excess Mechanism (Q5c)}
+
+The Q5c signal deserves the most detailed treatment as it is the Phase 4
+advance.  The economic story:
+
+\begin{enumerate}
+  \item A BTC-specific event causes BTC DVOL to spike.  For example:
+        a large BTC holder capitulates, triggering a cascade of long
+        liquidations specific to BTC perpetuals.
+  \item ETH DVOL rises less because the event is BTC-specific.
+        $N3z^{\mathrm{BTC}} \gg N3z^{\mathrm{ETH}}$.  Q5c is large and positive.
+  \item The BTC-specific forced supply exhausts (the large holder
+        has sold, the cascade has cleared, over-levered longs are gone).
+  \item BTC price recovers from the oversold level over the next 24 hours.
+        ETH recovers less (it did not fall as much).
+  \item Q5c predicts positive 24h BTC returns with IC $+0.189$.
+\end{enumerate}
+
+The mechanism is a refinement of the fear-resolution channel (A1 Section
+2.3) and the liquidation-exhaustion channel (A2 Section 2.1): by
+conditioning on the BTC-ETH spread, Q5c filters out broad crypto sell-offs
+(where both assets fall similarly and the recovery is less predictable)
+in favour of BTC-specific overshoots.
+
+\subsection{Liquidation Cascade Dynamics}
+\label{sec:cascade_theory}
+
+\subsubsection{How Cascades Form}
+
+A \emph{liquidation cascade} occurs when forced selling by one set of
+over-levered participants causes a price decline large enough to trigger
+additional forced selling by a second set:
+
+\begin{enumerate}
+  \item Participant A holds a $10\times$ levered BTC long.  The mark price
+        falls 9\%, their margin is below maintenance.  The exchange's
+        liquidation engine sells their position at market.
+  \item The forced sale pushes the mark price lower.  Participant B,
+        also levered long, now breaches their maintenance margin.
+        Their position is also liquidated.
+  \item The cascade continues until all positions above a certain
+        leverage level are wiped out.  OI drops sharply.  The mark
+        price has fallen further than the underlying ``fair value'' would
+        justify, creating a temporary oversold condition.
+\end{enumerate}
+
+Daily forced long-liquidation notional is the most direct observable of
+cascade severity.  A spike ($>2\sigma$ above the 30-day mean) indicates
+a major cascade has occurred, and the hypothesis is that the subsequent
+24h return is strongly positive as the oversold condition resolves.
+
+\subsubsection{Data Availability}
+
+The Binance Data Vision platform publishes daily liquidation snapshot
+files at:
+\begin{center}
+\texttt{/data/futures/um/daily/liquidationSnapshot/BTCUSDT/}
+\end{center}
+These files contain all individual liquidation orders for a given day,
+from which daily long-liquidation notional can be aggregated.
+
+During Phase 4 data collection, this endpoint returned HTTP 404
+for all dates 2022--2026, rendering Q6 untestable from this source.
+Alternative sources (Coinalyze, CoinGlass, Velo Data) provide similar
+data but require paid subscriptions or have incomplete historical
+coverage; these were not available for this research phase.  Q6 is
+formally recorded as \textbf{untestable} in Phase 4.
+
+%% ============================================================
+\section{Statistical Framework}
+\label{sec:stats}
+%% ============================================================
+
+This section derives the statistical tools used throughout Phase 4 from
+first principles.  The treatment is self-contained.
+
+\subsection{Log-Returns as Prediction Targets}
+
+For a price series $\{C_t\}$, the \emph{simple return} over a horizon $h$ is
+$\tilde{r}_t^{(h)} = C_{t+h}/C_t - 1$.  The \emph{log-return} is:
+\[
+  r_t^{(h)} = \log\frac{C_{t+h}}{C_t} = \log C_{t+h} - \log C_t
+\]
+Log-returns are preferred for three reasons:
+
+\paragraph{Temporal additivity.}
+Log-returns over sub-periods add exactly: $r_{t,t+h+k} = r_{t,t+h} + r_{t+h,t+h+k}$.
+Simple returns compound multiplicatively, requiring chain multiplication.
+This additivity is essential for equity curve construction: the log-equity
+curve is the cumulative sum of log-returns.
+
+\paragraph{Symmetry.}
+A simple return of $+50\%$ is not cancelled by a subsequent $-50\%$:
+$1.5 \times 0.5 = 0.75 \neq 1$.  Log-returns are symmetric: $+\log 1.5$
+is exactly cancelled by $-\log 1.5$.  This symmetry makes long and short
+positions analytically equivalent, since a short log-return is $-r_t^{(h)}$.
+
+\paragraph{Cost comparability.}
+Transaction costs are approximately constant fractions of notional regardless
+of direction.  A round-trip cost $c_{\text{RT}}$ is subtracted uniformly from
+$r_t^{(h)}$ regardless of its sign or magnitude.  This is exact in log-return
+space and approximate in simple return space.
+
+\paragraph{Basis-point convention.}
+All PnL, drawdown, and per-trade figures are stated in \emph{basis points}:
+$1\bp = 0.01\% = 10^{-4}$.  A log-return of $0.01$ (1\%) equals $100\bp$.
+
+The 24-hour total return including funding payments is:
+\begin{equation}
+  \pi_t^{(24h)} = \log\frac{C_{t+1440}}{C_t}
+                  - \sum_{k:\,\tau_k \in [t, t+1440]} F_{\tau_k}
+\end{equation}
+where $F_{\tau_k}$ is the 8-hour funding rate at settlement time $\tau_k$,
+and the sum covers the three settlements within the hold window.
+Round-trip maker cost: $c_{\mathrm{RT}} = 6\bp$ ($3\bp$ entry, $3\bp$ exit).
+
+\subsection{The Spearman Information Coefficient}
+\label{sec:IC}
+
+\begin{definition}[Spearman IC]
+  Let $\{(s_t, r_t)\}_{t=1}^n$ be a sample of signal-return pairs.
+  Define the rank functions:
+  \[
+    R_t = \rank(s_t) = \left|\{j : s_j \leq s_t\}\right|, \qquad
+    Q_t = \rank(r_t) = \left|\{j : r_j \leq r_t\}\right|
+  \]
+  (ranks from 1 to $n$; midranks for ties).  The Spearman IC is the Pearson
+  correlation applied to the rank vectors:
+  \begin{equation}
+    \IC(s, r) = \frac{\sum_{t=1}^n (R_t - \bar{R})(Q_t - \bar{Q})}
+                     {\sqrt{\sum_{t=1}^n (R_t - \bar{R})^2}
+                      \sqrt{\sum_{t=1}^n (Q_t - \bar{Q})^2}}
+    \label{eq:spearman}
+  \end{equation}
+  For continuous distributions with no ties, $\bar{R} = \bar{Q} = (n+1)/2$
+  and $\sum (R_t - \bar{R})^2 = n(n^2-1)/12$, giving the familiar formula:
+  \[
+    \IC(s, r) = 1 - \frac{6\sum_{t=1}^n d_t^2}{n(n^2 - 1)},
+    \qquad d_t = R_t - Q_t
+  \]
+\end{definition}
+
+\paragraph{Why Spearman over Pearson?}
+The Pearson correlation $\Cor(s, r)$ is the natural measure of
+\emph{linear} predictability.  However:
+\begin{enumerate}[noitemsep]
+  \item Log-return distributions are leptokurtic; a few large-return days
+        dominate the Pearson correlation.  A single outlier can flip the sign.
+  \item The relationship between a signal and $r_t^{(24h)}$ need not be
+        linear.  The Spearman IC is invariant to any monotone transformation
+        of either variable.
+  \item Trading strategies based on signal \emph{rank} (enter when the signal
+        is in the top quintile) are naturally assessed by rank correlation,
+        not level correlation.
+\end{enumerate}
+
+\begin{remark}
+  A negative IC is equally informative as a positive IC of the same
+  magnitude: the signal should simply be traded on the opposite side.
+  We report $|\IC|$ and the sign separately throughout.
+\end{remark}
+
+\subsection{The Breakeven Information Coefficient}
+\label{sec:ICstar}
+
+A statistically significant IC does not imply profitability.  The signal must
+generate sufficient expected gross profit to cover round-trip transaction costs.
+We now derive the minimum IC required.
+
+\begin{proposition}[Breakeven IC]
+  \label{prop:ICstar}
+  Consider a trading strategy that enters long when a standardised signal
+  $z_t \sim \mathcal{N}(0,1)$ is positive and short when $z_t$ is negative,
+  exiting after $h$ bars.  Under the linear-IC model
+  \begin{equation}
+    r_t^{(h)} = \IC \cdot \sigma_r \cdot z_t + \varepsilon_t, \qquad
+    \varepsilon_t \perp z_t,\quad
+    \Var(r_t^{(h)}) = \sigma_r^2
+    \label{eq:linearIC}
+  \end{equation}
+  the expected gross profit per trade equals
+  $\IC \cdot \sigma_r \cdot \sqrt{2/\pi}$.  The signal is profitable
+  against a round-trip cost $c_{\mathrm{RT}}$ if and only if
+  \begin{equation}
+    |\IC| > \IC^* \;\coloneqq\; \frac{c_{\mathrm{RT}}}{\sigma_r \sqrt{2/\pi}}
+    \label{eq:ICstar}
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  Under model~\eqref{eq:linearIC}, since $z_t \perp \varepsilon_t$:
+  \[
+    \E[r_t^{(h)} \mid z_t] = \IC \cdot \sigma_r \cdot z_t
+  \]
+  For a long trade conditional on $z_t > 0$:
+  \begin{align*}
+    \E[r_t^{(h)} \mid z_t > 0]
+    &= \IC \cdot \sigma_r \cdot \E[z_t \mid z_t > 0]
+    = \IC \cdot \sigma_r \cdot \frac{\E[z_t \cdot \mathbf{1}_{z_t > 0}]}
+                                     {P(z_t > 0)}
+  \end{align*}
+  For $z_t \sim \mathcal{N}(0,1)$:
+  \[
+    \E[z_t \mid z_t > 0]
+    = \frac{\int_0^\infty z\,\phi(z)\,\mathrm{d}z}{\tfrac{1}{2}}
+    = 2\int_0^\infty z\,\phi(z)\,\mathrm{d}z
+    = 2\left[-\phi(z)\right]_0^\infty
+    = 2\phi(0)
+    = \sqrt{\tfrac{2}{\pi}}
+  \]
+  By symmetry, a short trade ($z_t < 0$) earns $\E[-r_t^{(h)} \mid z_t < 0]
+  = \IC \cdot \sigma_r \cdot \sqrt{2/\pi}$ as well.
+
+  Expected net profit per trade equals gross minus round-trip cost:
+  \[
+    \E[\text{net profit}] = \IC \cdot \sigma_r \sqrt{2/\pi} - c_{\mathrm{RT}}
+  \]
+  Setting this to zero and solving for IC gives~\eqref{eq:ICstar}.\qed
+\end{proof}
+
+\begin{remark}[Threshold entry]
+  If the strategy only trades when $|z_t| > c$ for some $c > 0$, the expected
+  gross profit per trade is $\IC \cdot \sigma_r \cdot \E[z \mid z > c]$.  Since
+  $\E[z \mid z > c] = \phi(c)/[1-\Phi(c)] > \sqrt{2/\pi}$ for all $c > 0$,
+  the breakeven IC is \emph{lower} than~\eqref{eq:ICstar}.  The formula as
+  stated is conservative: it applies to the strategy that enters on every bar.
+\end{remark}
+
+\begin{remark}[Pearson vs.\ Spearman]
+  Proposition~\ref{prop:ICstar} is stated for the Pearson IC.  The Spearman
+  IC satisfies $\IC_S \approx (6/\pi)\arcsin(\IC_P / 2)$, so
+  $\IC_S \approx \IC_P$ for $|\IC| \ll 1$.  Since all empirical ICs in this
+  report are in $[-0.20, +0.20]$, the same $\IC^*$ formula is applied.
+\end{remark}
+
+For the parameters used throughout Phase 4:
+\begin{itemize}[noitemsep]
+  \item $c_{\mathrm{RT}} = 6\bp$ (maker: $3\bp$ entry, $3\bp$ exit).
+  \item $\sigma_r^{(24h)} \approx 2.135\%$ (empirical OOS volatility).
+  \item $\IC^*_{\mathrm{maker}} \approx 0.035$.
+\end{itemize}
+
+The IC/IC* ratio gives the ``multiple of breakeven'': a ratio of $3\times$
+means the signal generates three times the expected gross profit needed
+to cover costs.
+
+\subsection{The Overlapping-Return Inflation Problem}
+\label{sec:overlap}
+
+The 1-minute BTCUSDT dataset has $T \approx 527{,}040$ observations in the OOS
+2024 window.  If we compute $r_t^{(24\text{h})} = \log(C_{t+1440}/C_t)$
+for every $t$ and treat all pairs as independent, we overstate statistical
+significance severely.
+
+\paragraph{The autocorrelation structure of overlapping returns.}
+Under the assumption that 1-minute log-returns are i.i.d.\ with
+variance $\delta^2$, the 24h log-return decomposes as:
+\[
+  r_t^{(24\text{h})} = \sum_{j=0}^{1439} \Delta_j(t),
+  \qquad \Delta_j(t) = \log\frac{C_{t+j+1}}{C_{t+j}}
+\]
+Two adjacent observations share all but one minute of their window.
+More generally, for lag $k \leq 1440$:
+\begin{align*}
+  \Cov\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
+  &= \Cov\!\left(\sum_{j=0}^{1439}\Delta_j(t),\,
+                 \sum_{j=0}^{1439}\Delta_j(t+k)\right)
+   = (1440 - k)\,\delta^2
+\end{align*}
+since the two sums share exactly $1440 - k$ common terms (for $k < 1440$).
+The autocorrelation at lag $k$ is:
+\begin{equation}
+  \Cor\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
+  = \frac{(1440 - k)\,\delta^2}{1440\,\delta^2}
+  = 1 - \frac{k}{1440}, \qquad 0 \leq k \leq 1440
+  \label{eq:overlap_autocor}
+\end{equation}
+This is a tent function that linearly decays from 1 at lag 0 to 0 at lag 1440.
+
+\paragraph{Effective sample size.}
+For a stationary series with autocorrelation function $\rho_k$, the effective
+sample size for variance estimation is approximately:
+\[
+  n_{\mathrm{eff}} \approx \frac{T}{1 + 2\sum_{k=1}^{\infty} \rho_k}
+\]
+Substituting~\eqref{eq:overlap_autocor}:
+\[
+  1 + 2\sum_{k=1}^{1440-1}\!\!\left(1 - \frac{k}{1440}\right)
+  = 1 + 2 \cdot \frac{1440 \cdot 1439}{2 \cdot 1440}
+  = 1 + 1439
+  = 1440
+\]
+Therefore:
+\begin{equation}
+  n_{\mathrm{eff}} \approx \frac{T}{1440} \approx 366
+  \label{eq:neff}
+\end{equation}
+The effective number of independent 24-hour return observations is
+approximately 366 per year --- one per day --- regardless of whether we
+compute the return at every 1-minute bar or sample once per day.
+
+\paragraph{Practical implication.}
+A $t$-statistic computed from the full $n = 527{,}040$ series is inflated
+by a factor of $\sqrt{1440} \approx 38$ relative to the correct statistic
+based on $n_{\mathrm{eff}} \approx 366$.  \textbf{Solution:} sample every
+$1{,}440$ bars ($n \approx 365$ non-overlapping daily observations per OOS
+year) and apply the block bootstrap.
+
+\subsection{The Block Bootstrap}
+\label{sec:bootstrap}
+
+The block bootstrap (Künsch, 1989; Liu \& Singh, 1992) provides valid inference
+for statistics of dependent time series without parametric assumptions about
+the dependence structure.
+
+\begin{definition}[Non-Overlapping Block Bootstrap]
+  Given a time series $(X_1, \ldots, X_n)$ and a statistic $T_n$:
+  \begin{enumerate}
+    \item Choose block length $\ell$ and form $m = \lfloor n/\ell \rfloor$
+          non-overlapping blocks $B_j = (X_{(j-1)\ell+1}, \ldots, X_{j\ell})$
+          for $j = 1, \ldots, m$.
+    \item Draw $m$ blocks $B_{j_1}^*, \ldots, B_{j_m}^*$ uniformly at random
+          with replacement from $\{B_1, \ldots, B_m\}$.
+    \item Concatenate to form the bootstrap resample
+          $X^* = (B_{j_1}^*, \ldots, B_{j_m}^*)$; trim to length $n$.
+    \item Compute the bootstrap statistic $T_n^* = T_n(X^*)$.
+    \item Repeat $B$ times.  The empirical distribution of
+          $\{T_n^{*(b)}\}_{b=1}^B$ approximates the sampling distribution
+          of $T_n$.
+  \end{enumerate}
+\end{definition}
+
+For inference on $\IC$, the block bootstrap preserves temporal autocorrelation
+within blocks (capturing weekly seasonality, funding-cycle effects, and
+momentum effects) while permuting the dependence structure across blocks.
+
+\paragraph{Block length selection.}
+The block length $\ell$ should exceed the effective autocorrelation decay
+length of the signal-return interaction.  For the daily non-overlapping series
+used here, a block of $\ell = 21$ days (three calendar weeks) captures
+relevant dependence: weekly trading patterns, bi-weekly options gamma pinning
+cycles near expiry, and multi-week momentum effects.
+
+\paragraph{$p$-value computation.}
+For a one-sided test of $H_0 : \IC = 0$ against $H_1 : \IC > 0$:
+\begin{equation}
+  p = \frac{1}{B}\sum_{b=1}^B \mathbf{1}\!\left[\IC^{*(b)} \geq \widehat{\IC}\right]
+  \label{eq:pvalue}
+\end{equation}
+where $B = 2{,}000$ resamples are used throughout.
+
+\subsection{Pass Criteria (Pre-Committed)}
+
+All criteria were committed before running the IC screen:
+\begin{itemize}
+  \item \textbf{Unfiltered}: IC/IC* $> 0.5$ and correct sign.
+  \item \textbf{DVOL-filtered} ($\geq 54$): ratio $> 1.0$ and bootstrap
+        $p \leq 0.05$.
+  \item \textbf{Sub-period stability}: IC same-sign in $\geq 3$ of 5
+        OOS half-years.
+\end{itemize}
+
+IC screen advance triggers a full deep dive with additional gates:
+\begin{itemize}
+  \item 95\% block-bootstrap CI lower bound strictly positive.
+  \item Incremental IC after conditioning on N3$z$ is significant ($p \leq 0.05$).
+\end{itemize}
+
+\subsection{Data}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Dataset & Source & Coverage \\
+\midrule
+1-minute BTCUSDT klines & Binance FAPI & 2023-01-01 to 2026-05-13 \\
+BTC DVOL 1h & Deribit API & 2022-01-01 to 2026-05-15 \\
+ETH DVOL 1h & Deribit API & 2022-01-01 to 2026-05-15 (new) \\
+Premium index 1m & Binance FAPI & 2023-01-01 to 2026-05-13 \\
+Daily liquidations & Binance Data Vision & Unavailable (HTTP 404) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ETH DVOL series was downloaded via the same Deribit endpoint as the
+BTC series (\texttt{get\_volatility\_index\_data}, \texttt{currency=ETH}),
+yielding 38{,}281 hourly bars.
+
+%% ============================================================
+\section{Q4: Mark-Index Basis}
+\label{sec:q4}
+%% ============================================================
+
+\subsection{Signal Construction}
+
+Both variants derive from the same basis series
+$b_t$ (Equation~\ref{eq:basis}), standardised as a 30-day rolling
+$z$-score to remove the non-stationary level trend:
+
+\begin{definition}[Basis Signals]
+  Let $b_t = (M_t - I_t) / I_t$ be the 1-minute mark-index basis.
+  The 30-day rolling mean and standard deviation use 43{,}200 minute-bars
+  ($= 30 \times 1440$):
+  \begin{align}
+    z_t(b) &= \frac{b_t - \mu_{30\mathrm{d}}(b)}{\sigma_{30\mathrm{d}}(b)} \\
+    \text{Q4a}_t &= \phantom{-}z_t(b)
+      \quad\text{(momentum: positive basis $\to$ long)} \\
+    \text{Q4b}_t &= -z_t(b)
+      \quad\text{(contrarian: negative basis $\to$ long)}
+  \end{align}
+  For the daily IC frame, the basis signal at each daily observation is
+  the value of $z_t(b)$ at the sampling bar (every 1{,}440 bars).
+\end{definition}
+
+\subsection{IC Screen Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrrl}
+\toprule
+Signal & IC & Ratio & $p$ & IC (filt.) & Ratio (filt.) & Stab. & Verdict \\
+\midrule
+Q4a momentum   & $+0.113$ & $3.79\times$ & $0.000$ & $+0.087$ & $3.39\times$ & $5/5$ & \textbf{KILL} \\
+Q4b contrarian & $-0.113$ & $3.79\times$ & $1.000$ & $-0.087$ & $3.39\times$ & $0/5$ & \textbf{KILL} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Detailed Analysis}
+
+\paragraph{Q4a (momentum).}
+The unfiltered IC is strong: $3.79\times$ the maker breakeven, $p \approx 0$,
+$5/5$ sub-period stability.  This confirms the momentum hypothesis
+(Section~\ref{sec:basis_theory}): a positive basis predicts positive returns
+because it signals excess long demand and conviction.
+
+However, the DVOL-filtered bootstrap $p$-value is $0.061$, failing the
+pre-committed $0.05$ threshold by a small margin.  The filter restricts
+the sample from $n = 863$ to $n = 333$ OOS observations, which substantially
+reduces statistical power.  At $n = 333$, the block bootstrap has less
+resolution, and a true IC of $+0.087$ requires $p \approx 0.04$--$0.06$
+depending on the autocorrelation structure.
+
+\begin{remark}
+  Q4a is a borderline case.  Unfiltered, it clearly passes.  DVOL-filtered,
+  it misses by $0.011$.  The pre-committed criterion is $p \leq 0.05$;
+  $p = 0.061$ fails.  Q4a is formally killed but noted as a candidate
+  for re-evaluation as additional OOS data accumulates.  A further year
+  of OOS data at the observed IC would move $p$ below $0.05$.
+\end{remark}
+
+\paragraph{Q4b (contrarian).}
+Q4b is cleanly killed: IC $= -0.113$ (wrong sign), $0/5$ sub-period
+stability.  The data unambiguously favour the momentum direction: a
+positive basis predicts positive returns, not a negative basis.  The
+contrarian hypothesis does not hold in the 2024--2026 OOS period.
+
+\paragraph{Economic interpretation.}
+The momentum result (Q4a passes unfiltered) is consistent with the
+following structural feature of perpetual markets: the basis is
+controlled by the funding mechanism to be approximately zero on average,
+but \emph{within} each 8-hour window, a positive basis reflects genuine
+excess demand for long exposure.  Market participants who are long despite
+a positive basis (and thus paying funding) have a stronger directional
+conviction than average --- their presence predicts near-term continuation.
+
+%% ============================================================
+\section{Q5: ETH-BTC Cross-DVOL}
+\label{sec:q5}
+%% ============================================================
+
+\subsection{Signal Construction}
+
+Both $z$-scores use 30-day rolling windows (720 hourly bars):
+
+\begin{definition}[BTC and ETH 30-Day DVOL $z$-Scores]
+  \begin{align}
+    N3z^{\mathrm{BTC}}_t &= \frac{\DVOL^{\mathrm{BTC}}_t -
+      \mu_{720}(\DVOL^{\mathrm{BTC}})}
+      {\sigma_{720}(\DVOL^{\mathrm{BTC}})} \\
+    N3z^{\mathrm{ETH}}_t &= \frac{\DVOL^{\mathrm{ETH}}_t -
+      \mu_{720}(\DVOL^{\mathrm{ETH}})}
+      {\sigma_{720}(\DVOL^{\mathrm{ETH}})}
+  \end{align}
+  where $\mu_{720}$ and $\sigma_{720}$ denote the 720-hour (30-day)
+  rolling mean and standard deviation.  Both series are resampled to
+  the daily (1{,}440-bar) frame before IC computation.
+\end{definition}
+
+\begin{definition}[Cross-DVOL Signals]
+  \begin{align}
+    \text{Q5a}_t &= N3z^{\mathrm{ETH}}_t
+      \quad\text{(ETH $z$-score alone)} \\
+    \text{Q5b}_t &= N3z^{\mathrm{BTC}}_t \times N3z^{\mathrm{ETH}}_t
+      \quad\text{(product: joint confirmation)} \\
+    \text{Q5c}_t &= N3z^{\mathrm{BTC}}_t - N3z^{\mathrm{ETH}}_t
+      \quad\text{(difference: BTC-excess)}
+  \end{align}
+\end{definition}
+
+The correlation between the two $z$-score series provides context for
+interpreting each signal:
+\[
+  \Cor(N3z^{\mathrm{BTC}}, N3z^{\mathrm{ETH}}) = +0.696
+\]
+This high positive correlation means Q5b (the product) will be positive
+whenever both are elevated, and Q5c (the difference) captures the residual
+after removing the common factor.
+
+\subsection{IC Screen Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrrl}
+\toprule
+Signal & IC & Ratio & $p$ & IC (filt.) & Ratio (filt.) & Stab. & Verdict \\
+\midrule
+Q5a ETH $N3z$ alone  & $-0.067$ & $2.24\times$ & $0.975$ & $-0.049$ & $1.93\times$ & $1/5$ & KILL \\
+Q5b product          & $-0.015$ & $0.52\times$ & $0.677$ & $-0.007$ & $0.28\times$ & $2/5$ & KILL \\
+\textbf{Q5c BTC-excess} & $+0.189$ & $6.35\times$ & $<0.001$ & $+0.210$ & $8.17\times$ & $5/5$ & \textbf{ADVANCE} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Kill Rationale: Q5a and Q5b}
+
+\paragraph{Q5a (ETH $N3z$ alone).}
+IC $= -0.067$: the signal is in the \emph{wrong} direction.  A spike in
+ETH implied volatility in isolation predicts \emph{negative} BTC returns,
+not positive.  The $p$-value of $0.975$ is a strong one-sided rejection of
+the positive-direction hypothesis.  Sub-period stability is $1/5$.
+
+The negative IC is economically interpretable: when ETH spikes above its
+own history but BTC does not (i.e., ETH-specific stress), BTC tends to
+fall sympathetically via the correlated-asset channel without the compensating
+BTC-specific exhaustion mechanism that drives mean reversion.  The
+contagion from ETH is more persistent than the reversal.
+
+\paragraph{Q5b (product).}
+IC $= -0.015$ ($0.52\times$ ratio): effectively zero.  The product of two
+correlated $z$-scores mainly captures the \emph{common} factor.  When both
+BTC and ETH are simultaneously elevated (broad crypto stress), the
+subsequent BTC return has no systematic directional bias: the broad
+crypto fear event is neither reliably followed by a recovery nor a
+continuation.  Q5b correctly identifies no edge.
+
+\subsection{Q5c Deep Dive}
+\label{sec:q5c_deep}
+
+Q5c advances to a full deep dive.  The complete results from script
+\texttt{26\_q5c\_deep\_dive.py}:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Metric & Value \\
+\midrule
+OOS IC (non-overlapping daily) & $+0.189$ ($6.35\times$ ratio) \\
+Block-bootstrap $p$ & $< 0.0005$ ($B = 2{,}000$ resamples) \\
+95\% CI lower bound & $+0.045$ \textbf{(strictly positive; gate passes)} \\
+DVOL $\geq 52$ filtered IC & $+0.210$ ($8.17\times$ ratio), $p < 0.001$ \\
+Sub-period stability & $5/5$ OOS half-years \\
+Incremental IC / IC* (after N3$z$) & $+0.0803$ ($2.70\times$ ratio) \\
+$\Cor(\text{Q5c}, N3z^{\mathrm{BTC}})$ & $+0.342$ \\
+\midrule
+OOS Sharpe (Q5c $\geq 0.5$, DVOL $\geq 52$) & $+3.30$ ($n = 105$ trades) \\
+Win rate & $57.1\%$ \\
+Mean PnL per trade & $+53.7\bp$ \\
+Max drawdown & $-997\bp$ \\
+Calmar ratio & $13.58$ \\
+\midrule
+Combined (Q5c $\geq 0.5$ AND $N3z \geq 0.75$, DVOL $\geq 52$) & $+4.99$ ($n = 64$ trades) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Gate-by-Gate Assessment}
+
+\textbf{Gate 1 --- IC significance.}  $p < 0.0005$ is far below the $0.05$
+threshold.  The IC of $+0.189$ is $6.35\times$ the maker breakeven.  This
+is one of the strongest IC results in the programme.
+
+\textbf{Gate 2 --- 95\% CI lower bound.}  The block-bootstrap 95\%
+confidence interval for the IC has a lower bound of $+0.045 > 0$.  This
+means even the pessimistic scenario (5th percentile of the sampling
+distribution) implies the true IC is positive and above $\IC^* = 0.035$.
+The signal is not marginally significant; it is robustly positive.
+
+\textbf{Gate 3 --- DVOL filter strengthens.}  The IC increases from $+0.189$
+(unfiltered) to $+0.210$ (DVOL $\geq 52$), and the ratio from $6.35\times$
+to $8.17\times$.  This confirms the signal is concentrated in the same
+fear regime that underlies N3 and P3: when the market is already fearful,
+BTC-specific excess fear above ETH's level is a stronger contrarian predictor.
+
+\textbf{Gate 4 --- Sub-period stability.}  $5/5$ OOS half-years show
+positive IC.  No single 6-month window drives the result.
+
+\textbf{Gate 5 --- Incremental IC.}  After residualising Q5c on
+N3$z^{\mathrm{BTC}}$ (removing any component shared with N3), the residual
+IC is $+0.0803$ ($2.70\times$ the maker breakeven).  The incremental
+predictive power comes from the ETH component ($-N3z^{\mathrm{ETH}}$):
+controlling for overall BTC fear, knowing that ETH fear is \emph{lower}
+than BTC fear adds substantial directional information.
+
+\subsubsection{Independence from N3}
+
+The correlation $\Cor(\text{Q5c}, N3z^{\mathrm{BTC}}) = +0.342$ indicates
+moderate but not high collinearity.  Q5c and N3 are positively correlated
+because both include $N3z^{\mathrm{BTC}}$; however, Q5c's additional
+$-N3z^{\mathrm{ETH}}$ component breaks the perfect co-movement.
+
+The combined rule (Q5c $\geq 0.5$ AND $N3z \geq 0.75$, DVOL $\geq 52$)
+achieves Sharpe $+4.99$ on 64 trades --- substantially better than either
+signal alone.  This is consistent with Q5c providing genuine additional
+information: when both signals fire, the BTC-specific fear component
+has been confirmed by an elevated aggregate fear environment.
+
+\subsubsection{Interpretation}
+
+Q5c = $N3z^{\mathrm{BTC}} - N3z^{\mathrm{ETH}}$ measures
+\emph{BTC-specific} fear relative to the crypto baseline.  When this
+difference is large and positive:
+
+\begin{enumerate}
+  \item BTC's 30-day DVOL has spiked above its own recent history by more
+        than ETH's DVOL has spiked above ETH's history.
+  \item The excess BTC fear represents forced BTC-specific selling that
+        has exhausted: the sellers were BTC-specific (BTC miners, BTC
+        ETF arb desks, BTC-collateralised loan liquidations), not
+        broad crypto participants.
+  \item Broad crypto participants (who hold both BTC and ETH) are less
+        dislocated, so their re-entry into BTC is more predictable.
+  \item The BTC price recovers toward its fair value relative to ETH
+        within 24 hours.
+\end{enumerate}
+
+\subsection{Deployment Status}
+
+Q5c was initially deployed as a shadow strategy (\texttt{Q5C\_BTC\_EXCESS},
+entry: Q5c $\geq 0.5$ AND DVOL $\geq 52$, hold 24h, maker cost) and
+subsequently removed from paper trading when the research programme pivoted
+to higher-frequency signal exploration in Phase 5.  The frozen
+implementation is preserved in \texttt{strategies/q5c\_btc\_excess.py}
+and \texttt{research/active/p4/26\_q5c\_deep\_dive.py}.
+
+%% ============================================================
+\section{Q6: Liquidation Exhaustion}
+\label{sec:q6}
+%% ============================================================
+
+\subsection{Hypothesis}
+
+Forced long-liquidation cascades are a crypto-specific fear mechanism
+described in Section~\ref{sec:cascade_theory}.  A spike in daily forced
+long-selling marks the final stage of a leveraged sell-off.  Combined
+with the DVOL $\geq 54$ filter (ensuring the fear regime is active),
+this may identify capitulation bottoms with high precision.
+
+The proposed signal:
+\begin{equation}
+  \text{Q6}_t = \frac{L_t - \mu_{30}(L)}{\sigma_{30}(L)} \cdot
+                \mathbf{1}[\DVOL_t \geq 54]
+\end{equation}
+where $L_t$ is the total long-liquidation notional (USD) on day $t$.
+$\text{Q6}_t > 2$ signals an extreme liquidation event.
+
+\subsection{Data Availability}
+
+The Binance Data Vision liquidation snapshot endpoint:
+\begin{center}
+\texttt{/data/futures/um/daily/liquidationSnapshot/BTCUSDT/}
+\end{center}
+returned HTTP 404 for all dates 2022--2026.  The endpoint appears to
+have been deprecated or moved; no archived liquidation data was
+accessible.
+
+Q6 is formally recorded as \textbf{untestable} in Phase 4.  Alternative
+data sources that may enable testing in a future phase:
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Coinalyze:} provides historical BTC futures liquidation
+        data by exchange, daily granularity, back to 2020.
+  \item \textbf{CoinGlass:} provides liquidation heatmaps and historical
+        aggregated liquidation data at hourly granularity.
+  \item \textbf{Velo Data:} institutional-grade crypto market data
+        including liquidation feeds.
+\end{itemize}
+
+%% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+%% ============================================================
+
+\subsection{Why Cross-Asset Signals Work When Unilateral Ones Do Not}
+
+The Q5 results demonstrate an important general principle: \emph{conditioning
+on a cross-asset spread can produce a stronger signal than the individual
+asset levels.}
+
+\begin{itemize}
+  \item Q5a (ETH alone, $\IC = -0.067$): fails because ETH-specific fear
+        is not a reliable predictor of BTC mean reversion.
+  \item Q5b (product, $\IC = -0.015$): fails because broad crypto fear
+        (common factor) is not a reliable directional predictor.
+  \item Q5c (difference, $\IC = +0.189$): succeeds because it extracts the
+        BTC-specific component of fear after removing the systemic ETH-wide
+        component.
+\end{itemize}
+
+This parallels the logic that made N3 ($z$-score) superior to N1 (DVOL
+level, A1 Section 2.4): normalising by a reference removes the common
+factor and exposes the idiosyncratic component.
+
+\subsection{The Momentum-Contrarian Tension in Basis Signals}
+
+Q4a (momentum) passes the unfiltered screen but fails the DVOL-filtered
+test by $0.011$ in $p$-value.  This represents the coexistence of two
+forces:
+
+\begin{itemize}
+  \item \textbf{Short-horizon momentum:} within an 8-hour settlement window,
+        a positive basis reflects genuine demand and predicts continuation.
+  \item \textbf{Medium-horizon reversion:} the funding mechanism ensures
+        the basis mean-reverts to zero over multi-day horizons.  At the
+        24-hour horizon, both forces are active.
+\end{itemize}
+
+The unfiltered IC captures the momentum force in calm periods.  In
+high-DVOL periods (the filter), the reversion force is stronger (fear
+events cause rapid basis normalisation), and the net directional IC is
+weaker.  This regime interaction is why Q4a passes unfiltered but not
+filtered.
+
+\subsection{Limitations}
+
+\paragraph{DVOL-filtered sample size.}
+The DVOL $\geq 54$ filter reduces the OOS sample from 863 to 333
+observations.  At $n = 333$ with block size 21, the block bootstrap
+has only $333/21 \approx 16$ independent blocks, limiting the
+precision of the $p$-value estimate.  The borderline Q4a result
+($p = 0.061$) should be interpreted as ``near the threshold'' rather
+than as a qualitative failure.
+
+\paragraph{Q6 data gap.}
+The inability to test Q6 is the most significant limitation of Phase 4.
+The liquidation exhaustion hypothesis is economically well-motivated and
+empirically untested in this programme.  If daily liquidation data becomes
+available, Q6 should be the first signal in the Phase 6 queue.
+
+\paragraph{Correlation regime stability.}
+The BTC-ETH DVOL correlation of $+0.696$ is measured over the 2022--2026
+sample.  During structural regime changes (e.g., a period of sustained
+ETH-specific risk such as a major DeFi collapse, or a BTC-specific shock
+such as a mining regulatory crisis), the correlation may shift, affecting
+the Q5c signal's effective information content.  No regime stability test
+was performed in Phase 4.
+
+%% ============================================================
+\section{Summary and Kill Log}
+\label{sec:summary}
+%% ============================================================
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Signal & Verdict & Primary reason \\
+\midrule
+Q4a Basis momentum   & Kill & DVOL-filtered $p = 0.061 > 0.05$ (borderline; candidate for future re-test) \\
+Q4b Basis contrarian & Kill & Wrong direction ($\IC = -0.113$, $0/5$ stability) \\
+Q5a ETH $N3z$ alone  & Kill & Wrong direction in OOS ($\IC = -0.067$, $1/5$ stability) \\
+Q5b BTC$\times$ETH   & Kill & Near-zero IC ($0.52\times$), $2/5$ stability \\
+Q5c BTC-excess $N3z$ & \textbf{Advance} (superseded) & All gates pass; $5/5$; Sharpe $+3.30$; CI lower $+0.045$ \\
+Q6 Liquidation Exhaustion & Untestable & Binance Data Vision endpoint unavailable \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Research scripts: \texttt{data/download\_phase4.py},
+\texttt{research/active/p4/25\_phase4\_ic\_screen.py},
+\texttt{research/active/p4/26\_q5c\_deep\_dive.py}.
+
+%% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+%% ============================================================
+
+Phase 4 tested three new signal families and validated one: Q5c, the
+BTC-excess implied volatility signal.
+
+The key results:
+
+\begin{enumerate}
+  \item \textbf{Q5c is a robust, independent signal.}
+        IC $= +0.189$ ($6.35\times$ maker breakeven), block-bootstrap
+        $p < 0.0005$, 95\% CI lower bound $+0.045$ (strictly positive),
+        $5/5$ sub-period stability, and incremental IC $2.70\times$
+        after N3$z$ control.  OOS Sharpe $+3.30$ on 105 trades.
+
+  \item \textbf{The cross-asset spread (Q5c) outperforms its components.}
+        ETH $N3z$ alone (Q5a) has IC $= -0.067$.  BTC$\times$ETH product
+        (Q5b) has IC $= -0.015$.  The difference Q5c has IC $= +0.189$.
+        Conditioning on BTC-specific excess fear, after removing the
+        systemic ETH component, is the key filtering step.
+
+  \item \textbf{The basis is a momentum signal but fails the DVOL-filtered
+        gate.}  Q4a confirms the momentum hypothesis (positive basis
+        predicts positive returns) in calm periods, but the DVOL-filtered
+        $p = 0.061$ fails the pre-committed $0.05$ threshold.
+
+  \item \textbf{Q6 remains a high-priority untested hypothesis.}
+        The liquidation exhaustion mechanism is economically compelling
+        (Section~\ref{sec:cascade_theory}) but data unavailability
+        prevents testing.  Sourcing alternative liquidation data is a
+        Phase 6 priority.
+\end{enumerate}
+
+Q5c was deployed to shadow paper trading and subsequently superseded when
+the research programme pivoted to higher-frequency signals in Phase 5
+(A4).  Its research trail is preserved in \texttt{research/active/p4/}.
+
+\vspace{1em}
+\noindent\textit{Data: Binance FAPI 1m klines (2023--2026); Deribit
+BTC and ETH DVOL 1h (2022--2026); Binance FAPI premium index 1m
+(2023--2026).}
+
+%% ============================================================
+\section*{References}
+%% ============================================================
+\begingroup
+\setlength{\parindent}{-2em}
+\setlength{\leftskip}{2em}
+\setlength{\parskip}{6pt}
+\small
+
+Britten-Jones, M., \& Neuberger, A. (2000). Option prices, implied price processes, and stochastic volatility. \textit{The Journal of Finance}, \textit{55}(2), 839--866. \url{https://doi.org/10.1111/0022-1082.00228}
+
+Diebold, F. X., \& Yilmaz, K. (2012). Better to give than to receive: Predictive directional measurement of volatility spillovers. \textit{International Journal of Forecasting}, \textit{28}(1), 57--66. \url{https://doi.org/10.1016/j.ijforecast.2011.02.006}
+
+Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. \textit{The Annals of Statistics}, \textit{17}(3), 1217--1241. \url{https://doi.org/10.1214/aos/1176347265}
+
+Liu, R. Y., \& Singh, K. (1992). Moving blocks jackknife and bootstrap capture weak convergence. In R. LePage \& L. Billard (Eds.), \textit{Exploring the Limits of Bootstrap} (pp. 225--248). Wiley.
+
+\endgroup
+
+\end{document}
