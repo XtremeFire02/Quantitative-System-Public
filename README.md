@@ -1,8 +1,41 @@
-# Quantitative Research & Paper Trading System — BTCUSDT Perpetual
+# Quantitative Research & Paper Trading System
 
-A rigorous quantitative research project investigating return predictability in BTC perpetual futures, built on a formal 7-stage signal validation pipeline.
+A personal research project applying institutional-grade signal validation to BTC perpetual futures. Built from scratch over several months — every component, from the backtest engine to the live paper trading dashboard, was written without external frameworks.
 
-> **Disclaimer:** This is a research and paper trading system. It is not financial advice and does not claim guaranteed profitability. All results are from backtesting and live paper trading with no real capital at risk.
+The goal was not to build a black-box strategy optimizer. It was to build a system rigorous enough that I could trust a rejection.
+
+> **Disclaimer:** This is a research and paper trading system. It is not financial advice and does not claim guaranteed profitability. All results are from backtesting and live paper trading with no real capital at risk. Signal parameters for validated strategies are kept private.
+
+---
+
+## What I Built
+
+| Layer | Stack | What it does |
+|---|---|---|
+| Research pipeline | Python, pandas, SciPy | 7-stage signal validation with pre-specified kill criteria |
+| Backtest engine | Python (event-driven) | Position-level simulation with realistic costs and funding |
+| Paper trading backend | FastAPI, APScheduler, SQLite | Runs daily signal jobs at 00:00 UTC, tracks PnL and equity |
+| Live data feeds | Binance FAPI, Deribit API | Price, funding rate, open interest, implied volatility |
+| Risk system | Python | Pre-trade and portfolio-level gates; DB-persisted kill switch |
+| Dashboard | React 19, TypeScript, Recharts | 12-page SPA with real-time signal, trade, and performance views |
+| Infrastructure | Docker, GitHub Actions CI | Containerised deploy; pytest + tsc on every push |
+
+---
+
+## Pipeline Status (May 2026)
+
+Every hypothesis is tracked from formation to a binary verdict. Nothing is abandoned without a formal kill or promotion decision.
+
+| Phase | Signals Tested | Verdict | Stage Reached | Report |
+|---|---|---|---|---|
+| B1 | Q5c — Mark-Index Basis / Cross-Asset IV / Liquidation Exhaustion | Killed | Stage 4 | [`B1.tex`](results/reports/killed%20reports/B1.tex) |
+| B2 | S1a — Realized Skewness | Killed | Stage 4 | [`B2.tex`](results/reports/killed%20reports/B2.tex) |
+| B2 | S1b — Pre-Settlement Flow | Killed | Stage 2 | [`B2.tex`](results/reports/killed%20reports/B2.tex) |
+| B2 | S1c — Cross-Exchange Funding Divergence | Killed | Stage 2 | [`B2.tex`](results/reports/killed%20reports/B2.tex) |
+| Archive | CVD Divergence, VPIN Regime | Killed | Early stages | — |
+| (Private) | 2 validated signals | **Stage 7 — live paper trading** | — | Private |
+
+The kill reports for B1 and B2 are full LaTeX documents with IC results, bootstrap confidence intervals, regime breakdowns, and cost-adjusted PnL tables. The validated signal reports are private.
 
 ---
 
