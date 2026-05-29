@@ -74,7 +74,7 @@ export default function Replay() {
         <div style={{ marginBottom: 12, color: "#777777", fontSize: 13, lineHeight: 1.6, fontFamily: "Courier New" }}>
           Runs the frozen strategy rule against stored parquet files (excluded from repo).
           The replay uses identical logic to the research backtest: 30d DVOL z-score,
-          DVOL ≥ 54 regime filter, daily sampling, maker cost model (6bp RT).
+          DVOL ≥ δ regime filter, daily sampling, maker cost model (6bp RT).
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#777777", fontSize: 13, cursor: "pointer" }}>

@@ -94,14 +94,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-label">N3 z-score</div>
             <div className="card-value">{fmt(data.n3_z, 3)}</div>
-            <div className="card-sub">vs 0.75 threshold</div>
+            <div className="card-sub">vs signal threshold θ</div>
           </div>
           <div className="card">
             <div className="card-label">DVOL Filter</div>
             <div className="card-value" style={{ fontSize: 15 }}>
               {data.dvol_filter_pass == null ? "—" : (
                 <span className={`badge ${data.dvol_filter_pass ? "badge-green" : "badge-red"}`}>
-                  {data.dvol_filter_pass ? "PASS ≥ 54" : "FAIL < 54"}
+                  {data.dvol_filter_pass ? "PASS" : "FAIL"}
                 </span>
               )}
             </div>

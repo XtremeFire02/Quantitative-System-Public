@@ -1208,7 +1208,7 @@ Train 2023    & 34 & $+5.49$ & $+2{,}532$ & $-643$ & 58.8 &  9.3 \\
 OOS 2024-H1   & 34 & $+5.51$ & $+3{,}691$ & $-658$ & 67.6 & 18.7 \\
 OOS 2024-H2   & 35 & $+7.52$ & $+3{,}232$ & $-530$ & 68.6 & 19.0 \\
 OOS 2025-H1   & 19 & $+3.11$ & $+1{,}029$ & $-642$ & 68.4 & 10.5 \\
-OOS 2025-H2   & \multicolumn{6}{l}{\textit{$<$2 trades (DVOL structurally below 54 in H2 2025 bull market)}} \\
+OOS 2025-H2   & \multicolumn{6}{l}{\textit{$<$2 trades (DVOL structurally below $\delta$ in H2 2025 bull market)}} \\
 OOS 2026-YTD  & 10 & $+5.57$ & $+1{,}616$ & $-518$ & 50.0 &  7.5 \\
 \bottomrule
 \end{tabular}
@@ -1216,7 +1216,7 @@ OOS 2026-YTD  & 10 & $+5.57$ & $+1{,}616$ & $-518$ & 50.0 &  7.5 \\
 
 Sharpe is positive in all five periods with sufficient trade count.
 The 2025-H2 gap is structural: DVOL averaged 41.6 that period
-(well below the 54 threshold), a consequence of the bull market
+(well below the $\delta$ threshold), a consequence of the bull market
 IV suppression documented in A1 Section 6.3.
 
 \subsection{Year-by-Year Performance}
@@ -1551,7 +1551,7 @@ DVOL zone & Active signal & Status \\
 \midrule
 $< 51$              & None (flat)                & Confirmed: all signals fail here \\
 $51$--$53$          & None (flat)                & P1 not independent in this range \\
-$54$--$59$          & N3 (primary) + P3          & N3 validated; P3 adds independent trades \\
+$\delta$--$59$      & N3 (primary) + P3          & N3 validated; P3 adds independent trades \\
 $\geq 60$           & N3 + P3 (both strongest)   & Both signals active; high-fear zone \\
 \bottomrule
 \end{tabular}

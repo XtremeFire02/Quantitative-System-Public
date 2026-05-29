@@ -22,7 +22,7 @@ export default function Signals() {
       <div className="page-header">
         <div className="page-title">Signal Log</div>
         <div className="page-subtitle">
-          Every daily N3 evaluation · Frozen rule: N3z &gt; 0.75 AND DVOL ≥ 54
+          Every daily N3 evaluation · Frozen rule: N3z &gt; θ AND DVOL ≥ δ (thresholds private)
         </div>
       </div>
 
@@ -72,7 +72,7 @@ export default function Signals() {
                   <td>{fmt(s.dvol, 1)}</td>
                   <td style={{ color: "#555555" }}>{fmt(s.dvol_mean_30d, 1)}</td>
                   <td style={{ color: "#555555" }}>{fmt(s.dvol_std_30d, 2)}</td>
-                  <td style={{ fontWeight: 600, color: (s.n3_z ?? 0) > 0.75 ? "#00cc44" : "#cccccc" }}>
+                  <td style={{ fontWeight: 600, color: s.entry_signal ? "#00cc44" : "#cccccc" }}>
                     {fmt(s.n3_z, 3)}
                   </td>
                   <td>

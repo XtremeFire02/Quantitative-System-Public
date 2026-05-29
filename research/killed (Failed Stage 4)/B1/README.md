@@ -39,7 +39,7 @@ gives clean incremental IC measurement.
 **Q6 (Liquidations):** Forced liquidation cascades are a crypto-specific fear mechanism with
 no close equity analogue. A spike in long liquidation notional marks the moment where
 leveraged buyers are forcibly removed — historically the final stage of a sell-off. Combined
-with the DVOL ≥ 54 regime filter (which already proved necessary for N3 and P3), this may
+with the DVOL ≥ δ regime filter (which already proved necessary for N3 and P3), this may
 identify capitulation bottoms with higher precision.
 
 ---
@@ -73,7 +73,7 @@ without any additional download.
 | Gate | Threshold |
 |------|-----------|
 | Unfiltered IC/IC* ratio | > 0.5 |
-| DVOL ≥ 54 filtered ratio | > 1.0 |
+| DVOL ≥ δ filtered ratio | > 1.0 |
 | Bootstrap p (one-sided) | ≤ 0.05 |
 | Sub-period direction stability | ≥ 3 of 5 OOS half-years |
 | Independence from N3z | \|corr\| < 0.5 or incremental ratio > 0.5 |

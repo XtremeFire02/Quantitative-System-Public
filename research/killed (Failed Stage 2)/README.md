@@ -26,7 +26,7 @@ on a held-out test set that was never used during development.
 | `15_h1_execution_feasibility.py` | H1 selective entry thresholds | Multiple threshold combinations tested — none achieve p ≤ 0.05 in OOS | 2025 |
 | `16_phase2_quick_screen.py` | Phase 2 OI signals (D1, D2, D3) screen | D1, D2 failed IC screen. D3 marginal (became P3 after refinement → see `research/active/p3/`) | 2025 |
 | `25_du_short.py` | DU Regime SHORT (price down + OI up) | **Formally killed.** OOS Sharpe −0.44, block-bootstrap p = 1.000 (n=57). Zero edge | 2026-05-14 |
-| `25_phase4_ic_screen.py` (Q4a) | Basis momentum (high basis → long) | Unfiltered IC passes (ratio 3.79x, p≈0), but DVOL≥54 filter p=0.061 fails the 0.05 gate. Direction correct (5/5). Borderline — killed per pre-committed criteria | 2026-05-15 |
+| `25_phase4_ic_screen.py` (Q4a) | Basis momentum (high basis → long) | Unfiltered IC passes (ratio 3.79x, p≈0), but DVOL≥δ filter p=0.061 fails the 0.05 gate. Direction correct (5/5). Borderline — killed per pre-committed criteria | 2026-05-15 |
 | `25_phase4_ic_screen.py` (Q4b) | Basis contrarian (low basis → long) | Wrong direction (IC=−0.113). The momentum direction (Q4a) is correct, not contrarian. 0/5 OOS sub-periods correct | 2026-05-15 |
 | `25_phase4_ic_screen.py` (Q5a) | ETH N3z alone → BTC returns | Wrong direction in OOS (IC=−0.067). Signal reversed after 2024-H1. 1/5 stability. ETH vol alone is not a reliable BTC predictor | 2026-05-15 |
 | `25_phase4_ic_screen.py` (Q5b) | BTC×ETH N3z product | Near-zero IC (−0.015, ratio 0.52x). Combining BTC and ETH z-scores multiplicatively adds noise. 2/5 stability | 2026-05-15 |
