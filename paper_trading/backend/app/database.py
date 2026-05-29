@@ -322,8 +322,8 @@ def _seed_strategy_statuses(db) -> None:
     known = [
         ("N3_DVOL_LONG",    "validated"),
         ("P3_OIPD_DD",      "shadow"),
-        ("P3_OIPD_DD_57",   "shadow"),
-        ("P3_OIPD_DD_60",   "shadow"),
+        ("P3_OIPD_DD_B",    "shadow"),
+        ("P3_OIPD_DD_C",    "shadow"),
         ("DU_SHORT",        "killed"),
     ]
     for name, status in known:
