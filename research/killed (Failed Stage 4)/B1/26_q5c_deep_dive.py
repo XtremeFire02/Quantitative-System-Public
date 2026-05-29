@@ -26,6 +26,7 @@ Run from repo root:
 from __future__ import annotations
 import sys, io, warnings
 import numpy as np
+import os
 import pandas as pd
 from scipy import stats as sp_stats
 from pathlib import Path
@@ -34,6 +35,9 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 warnings.filterwarnings("ignore")
 sys.path.insert(0, ".")
 from framework.costs import CostModel
+
+# N3 reference threshold — loaded from env; see paper_trading/.env.example.
+_N3Z_TH = float(os.getenv("N3Z_THRESHOLD", "0"))
 
 RAW       = Path("data/raw")
 MAKER     = CostModel(use_maker=True)
@@ -256,7 +260,7 @@ print()
 print(f"  {'DVOL>=':<8} {'n':>5}  {'IC':>8}  {'Ratio':>8}  {'p-boot':>8}  {'Hit%':>7}  Signal?")
 print(f"  {'-'*65}")
 
-best_dvol = 54
+best_dvol = 0  # initial placeholder; updated during sweep
 best_p    = 1.0
 
 for thresh in [48, 50, 52, 54, 56, 58, 60]:
@@ -337,9 +341,9 @@ print(f"  Incremental ratio > 0.5: {'YES' if ratio_resid > 0.5 else 'NO'}  ({rat
 print()
 
 # Combined signal (N3z + Q5c joint rule)
-print("  Combined rule: Q5c >= 0.5 AND N3z >= 0.75 AND DVOL >= {}".format(best_dvol))
+print("  Combined rule: Q5c >= 0.5 AND N3z > threshold AND DVOL >= {}".format(best_dvol))
 dvol_filter    = oos["dvol_btc"] >= best_dvol
-n3z_filter     = oos["n3z_btc"] >= 0.75
+n3z_filter     = oos["n3z_btc"] > _N3Z_TH
 q5c_filter     = oos["q5c"] >= 0.5
 
 n3_only_trades = oos[dvol_filter & n3z_filter & ~q5c_filter]["r24h_net"].dropna()

@@ -32,8 +32,8 @@ _REGISTRY: dict[str, SignalEvaluator] = {
 
     # ── P3 OI-Price Divergence shadow ──────────────────────────────────────────
     "P3_OIPD_DD":    P3OIPDEvaluator(strategy_name="P3_OIPD_DD"),
-    "P3_OIPD_DD_57": P3OIPDEvaluator(strategy_name="P3_OIPD_DD_57", dvol_threshold=_DVOL_TH2),
-    "P3_OIPD_DD_60": P3OIPDEvaluator(strategy_name="P3_OIPD_DD_60", dvol_threshold=_DVOL_TH3),
+    "P3_OIPD_DD_B": P3OIPDEvaluator(strategy_name="P3_OIPD_DD_B", dvol_threshold=_DVOL_TH2),
+    "P3_OIPD_DD_C": P3OIPDEvaluator(strategy_name="P3_OIPD_DD_C", dvol_threshold=_DVOL_TH3),
 
     # ── Experimental ──────────────────────────────────────────────────────────
     "FUNDING_CARRY":  FundingCarryEvaluator(strategy_name="FUNDING_CARRY"),

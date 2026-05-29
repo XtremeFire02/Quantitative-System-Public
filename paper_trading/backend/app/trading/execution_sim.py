@@ -32,15 +32,15 @@ from dataclasses import asdict, dataclass
 _ADVERSE_SELECTION_FRACTION = 0.05    # fraction of implied daily range captured at entry
 _DVOL_ANNUAL_TO_DAILY = 1.0 / (365 ** 0.5)
 
-# Latency baseline at DVOL=54 for a typical datacenter connection (~2 ms)
+# Latency baseline at elevated DVOL for a typical datacenter connection (~2 ms).
 # Set via environment or overridden by the network simulator in tests.
 _LATENCY_MS_DEFAULT = float(os.getenv("ASSUMED_LATENCY_MS", "40.0"))
-_BP_PER_MS_AT_DVOL54 = 0.006    # bp of price move per ms at DVOL=54
+_BP_PER_MS_AT_DVOL_REF = 0.006  # bp of price move per ms at reference DVOL level
 
 # Maker fill probability decays above the reference DVOL level
 _MAKER_FILL_BASE = 0.80
 _MAKER_FILL_VOL_SLOPE = 0.10     # subtract per 10-pt DVOL above reference
-_DVOL_MAKER_REFERENCE = 54.0
+_DVOL_MAKER_REFERENCE = float(os.getenv("DVOL_MAKER_REFERENCE", "50.0"))
 
 
 @dataclass
@@ -109,7 +109,7 @@ def estimate_execution(
 
     # ── Latency ───────────────────────────────────────────────────────────────
     vol_scalar = dvol / _DVOL_MAKER_REFERENCE
-    latency_bp = lat * _BP_PER_MS_AT_DVOL54 * vol_scalar
+    latency_bp = lat * _BP_PER_MS_AT_DVOL_REF * vol_scalar
 
     # ── Maker fill probability ────────────────────────────────────────────────
     maker_prob = max(0.30, _MAKER_FILL_BASE - _MAKER_FILL_VOL_SLOPE * (dvol_excess / 10.0))
@@ -178,7 +178,7 @@ def estimate_exit_execution(
     adverse_bp = 0.0
 
     vol_scalar = dvol / _DVOL_MAKER_REFERENCE
-    latency_bp = lat * _BP_PER_MS_AT_DVOL54 * vol_scalar
+    latency_bp = lat * _BP_PER_MS_AT_DVOL_REF * vol_scalar
 
     maker_prob = max(0.30, _MAKER_FILL_BASE - _MAKER_FILL_VOL_SLOPE * (dvol_excess / 10.0))
     fee_bp = maker_prob * market.maker_fee_bp + (1.0 - maker_prob) * market.taker_fee_bp

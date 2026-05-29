@@ -71,9 +71,9 @@ in Phase 5.}  All other Phase 4 signals are killed or untestable.
 
 The validated signal stack entering Phase 4 is:
 \begin{enumerate}
-  \item N3 (DVOL $z$-score $\geq 0.75$, DVOL $\geq 54$): OOS Sharpe $+2.95$,
+  \item N3 (DVOL $z$-score $> \theta$, DVOL $\geq \delta$): OOS Sharpe $+2.95$,
         $1.2$ trades/week (\textbf{A1}).
-  \item P3 (OI-Price Divergence, DD regime, DVOL $\geq 54$): OOS Sharpe $+5.18$
+  \item P3 (OI-Price Divergence, DD regime, DVOL $\geq \delta$): OOS Sharpe $+5.18$
         on exclusive trades, independent of N3 (\textbf{A2}).
 \end{enumerate}
 
@@ -644,7 +644,7 @@ where $B = 2{,}000$ resamples are used throughout.
 All criteria were committed before running the IC screen:
 \begin{itemize}
   \item \textbf{Unfiltered}: IC/IC* $> 0.5$ and correct sign.
-  \item \textbf{DVOL-filtered} ($\geq 54$): ratio $> 1.0$ and bootstrap
+  \item \textbf{DVOL-filtered} ($\geq \delta$): ratio $> 1.0$ and bootstrap
         $p \leq 0.05$.
   \item \textbf{Sub-period stability}: IC same-sign in $\geq 3$ of 5
         OOS half-years.
@@ -857,7 +857,7 @@ Mean PnL per trade & $+53.7\bp$ \\
 Max drawdown & $-997\bp$ \\
 Calmar ratio & $13.58$ \\
 \midrule
-Combined (Q5c $\geq 0.5$ AND $N3z \geq 0.75$, DVOL $\geq 52$) & $+4.99$ ($n = 64$ trades) \\
+Combined (Q5c $\geq 0.5$ AND $N3z > \theta$, DVOL $\geq 52$) & $+4.99$ ($n = 64$ trades) \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -897,7 +897,7 @@ moderate but not high collinearity.  Q5c and N3 are positively correlated
 because both include $N3z^{\mathrm{BTC}}$; however, Q5c's additional
 $-N3z^{\mathrm{ETH}}$ component breaks the perfect co-movement.
 
-The combined rule (Q5c $\geq 0.5$ AND $N3z \geq 0.75$, DVOL $\geq 52$)
+The combined rule (Q5c $\geq 0.5$ AND $N3z > \theta$, DVOL $\geq 52$)
 achieves Sharpe $+4.99$ on 64 trades --- substantially better than either
 signal alone.  This is consistent with Q5c providing genuine additional
 information: when both signals fire, the BTC-specific fear component
@@ -941,13 +941,13 @@ and \texttt{research/active/p4/26\_q5c\_deep\_dive.py}.
 Forced long-liquidation cascades are a crypto-specific fear mechanism
 described in Section~\ref{sec:cascade_theory}.  A spike in daily forced
 long-selling marks the final stage of a leveraged sell-off.  Combined
-with the DVOL $\geq 54$ filter (ensuring the fear regime is active),
+with the DVOL $\geq \delta$ filter (ensuring the fear regime is active),
 this may identify capitulation bottoms with high precision.
 
 The proposed signal:
 \begin{equation}
   \text{Q6}_t = \frac{L_t - \mu_{30}(L)}{\sigma_{30}(L)} \cdot
-                \mathbf{1}[\DVOL_t \geq 54]
+                \mathbf{1}[\DVOL_t \geq \delta]
 \end{equation}
 where $L_t$ is the total long-liquidation notional (USD) on day $t$.
 $\text{Q6}_t > 2$ signals an extreme liquidation event.
@@ -1022,7 +1022,7 @@ filtered.
 \subsection{Limitations}
 
 \paragraph{DVOL-filtered sample size.}
-The DVOL $\geq 54$ filter reduces the OOS sample from 863 to 333
+The DVOL $\geq \delta$ filter reduces the OOS sample from 863 to 333
 observations.  At $n = 333$ with block size 21, the block bootstrap
 has only $333/21 \approx 16$ independent blocks, limiting the
 precision of the $p$-value estimate.  The borderline Q4a result

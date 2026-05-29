@@ -668,7 +668,7 @@ correct protocol is \emph{walk-forward} validation:
 
 For Signal N3, no parameters are fit on the training data: the 30-day rolling
 window and $z$-score transformation are fixed by definition; the period
-DVOL $\geq 54$ regime filter threshold is the only tuned parameter, and it
+DVOL regime filter threshold is the only tuned parameter, and it
 is cross-validated in Section~\ref{sec:threshold_sweep}.
 
 
@@ -935,7 +935,7 @@ $\theta$ & Active days & Trades & Net PnL (bp) & Sharpe & MaxDD (bp) \\
 \end{tabular}
 \end{table}
 
-Sharpe peaks at $\theta = 0.75$ with Sharpe $= 2.37$, net PnL
+Sharpe peaks at the selected threshold $\theta$ with Sharpe $= 2.37$, net PnL
 $= 9{,}305\bp$ over 2024 ($= 93.1\%$ cumulative log return on notional;
 $9{,}305 \times 10^{-4} = 0.9305$),
 and maximum drawdown $1{,}924\bp$ ($= 19.2\%$). All thresholds are profitable net
@@ -1038,7 +1038,7 @@ persistent.
 
 \begin{table}[H]
 \centering
-\caption{Year-by-year long-short backtest ($\theta = 0.75$, maker cost, daily)}
+\caption{Year-by-year long-short backtest ($\theta = \theta_\mathrm{sel}$, maker cost, daily)}
 \label{tab:yearly}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -1136,12 +1136,12 @@ This is regime dependence, not signal decay.}
 \label{sec:threshold_sweep}
 
 To select the DVOL conditioning threshold without in-sample data snooping,
-we evaluate the long-short rule ($\theta = 0.75$, maker cost) over the full
+we evaluate the long-short rule ($\theta = \theta_\mathrm{sel}$, maker cost) over the full
 OOS 2024+ period ($n = 863$ days) at varying DVOL filters:
 
 \begin{table}[H]
 \centering
-\caption{DVOL entry-filter sweep (OOS 2024+, $n=863$ days, $\theta=0.75$, maker cost)}
+\caption{DVOL entry-filter sweep (OOS 2024+, $n=863$ days, $\theta=\theta_\mathrm{sel}$, maker cost)}
 \label{tab:dvol_sweep}
 \begin{tabular}{rrrrrr}
 \toprule
@@ -1160,14 +1160,13 @@ $\geq 60$  & 121 & $+0.150$ & $0.120$ & $+3.32$ & $+7{,}472$  \\
 Sharpe increases monotonically as the DVOL threshold rises, peaking near
 DVOL $\geq 57$ before sample size becomes restrictive (121 active days
 at DVOL $\geq 60$ is too few for reliable estimation). The practical sweet
-spot is DVOL $\geq 54$--57: Sharpe $2.20$--$3.46$ with the maximum
-drawdown shrinking from $5{,}055\bp$ (unfiltered) to $1{,}624\bp$ at
-DVOL $\geq 57$.
+spot lies in the mid-range of the DVOL sweep: Sharpe $2.20$--$3.46$ with
+the maximum drawdown shrinking from $5{,}055\bp$ (unfiltered) to $1{,}624\bp$
+at the tighter end of the range.
 
 \paragraph{Robustness to the choice of threshold.}
-The Sharpe at DVOL $\geq 54$ is $2.20$ and at DVOL $\geq 57$ is $3.46$. This
-$1.26$ difference is not concentrated at a cliff: the Sharpe increases
-smoothly from 46 to 60. The DVOL $= 54$ threshold is adopted for the
+The Sharpe increases smoothly across the sweep range — not concentrated at a
+cliff. The selected DVOL threshold $\delta$ is adopted for the
 position-level backtest (Section~\ref{sec:backtest}) as the practical
 balance between Sharpe improvement and active-day count.
 
@@ -1178,7 +1177,7 @@ Applying the DVOL $\geq 51$ filter by period:
 \begin{table}[H]
 \centering
 \caption{Long-short Sharpe: unconditional vs DVOL $\geq 51$
-($\theta=0.75$, maker cost)}
+($\theta=\theta_\mathrm{sel}$, maker cost)}
 \label{tab:dvol_cond}
 \begin{tabular}{lrrrr}
 \toprule
@@ -1302,11 +1301,11 @@ of built-in regime selectivity that substantially reduces the maximum drawdown.
 \subsection{Long-Side vs.\ Short-Side Decomposition}
 \label{sec:longshort_decomp}
 
-The frozen rule enters both long (N3$_t > 0.75$) and short (N3$_t < -0.75$)
-positions conditional on DVOL $\geq 54$.  The fear-resolution mechanism
+The frozen rule enters both long (N3$_t > +\theta$) and short (N3$_t < -\theta$)
+positions conditional on DVOL $\geq \delta$.  The fear-resolution mechanism
 (Section~\ref{sec:mechanism}) provides a mechanistically grounded rationale
 for longs: an elevated-fear regime resolves toward positive returns as
-perceived risk subsides.  The short side (DVOL above 54 but below its
+perceived risk subsides.  The short side (DVOL above $\delta$ but below its
 30-day mean) has a weaker theoretical basis and does not directly follow
 from the same mechanism.
 
@@ -1322,8 +1321,8 @@ Table~\ref{tab:longshort_decomp} separates the two sides for OOS 2024
 \toprule
 Side & $n$ & Net PnL (bp) & Sharpe & Win\% & Avg win (bp) & MaxDD (bp) \\
 \midrule
-LONG  ($N3_z > +0.75$) & 105 & $+6{,}080$ & $3.60$ & 52.4\% & $+274$ & $1{,}119$ \\
-SHORT ($N3_z < -0.75$) &  38 & $+403$     & $0.81$ & 47.4\% & $+222$ & $1{,}453$ \\
+LONG  ($N3_z > +\theta$) & 105 & $+6{,}080$ & $3.60$ & 52.4\% & $+274$ & $1{,}119$ \\
+SHORT ($N3_z < -\theta$) &  38 & $+403$     & $0.81$ & 47.4\% & $+222$ & $1{,}453$ \\
 \midrule
 Combined               & 143 & $+6{,}483$ & ---    & 51.0\% & ---    & ---       \\
 \bottomrule
@@ -1424,12 +1423,11 @@ volume on Binance exceeds \$20 billion, so meaningful trading sizes
 market impact models would need to be applied.
 
 \paragraph{Regime filter stability.}
-The DVOL $\geq 54$ threshold is chosen using OOS 2024+ data. While
+The selected DVOL $\geq \delta$ threshold is chosen using OOS 2024+ data. While
 Table~\ref{tab:dvol_sweep} shows a smooth relationship (not a cliff
-at 54), there is residual data snooping in the threshold choice.
+at any single value), there is residual data snooping in the threshold choice.
 A fixed-rule strategy using DVOL $\geq 51$ (the historical median)
-instead of $54$ produces Sharpe $1.68$ --- lower but still strongly
-profitable.
+produces Sharpe $1.68$ --- lower but still strongly profitable.
 
 \subsection{Multiple Comparison Adjustment}
 

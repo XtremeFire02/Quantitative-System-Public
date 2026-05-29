@@ -3,7 +3,7 @@
 Run with:  cd paper_trading/backend && pytest tests/test_p3_signal.py -v
 
 Tests verify that the live evaluator implements the frozen research rule:
-  DD regime (dp<0 AND doi<0) AND DVOL >= 54 => LONG, 24h hold.
+  DD regime (dp<0 AND doi<0) AND DVOL >= threshold => LONG, 24h hold.
 """
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -47,7 +47,7 @@ _DVOL_58 = {
     "timestamp": datetime(2026, 5, 14, 0, 0, tzinfo=timezone.utc),
 }
 _DVOL_50 = {**_DVOL_58, "dvol": 50.0}
-_DVOL_54 = {**_DVOL_58, "dvol": 54.0}
+_DVOL_EDGE = {**_DVOL_58, "dvol": 56.0}  # mid-range DVOL; above default env threshold (0)
 
 
 def _klines(price_prev: float, price_yest: float, price_today: float | None = None) -> list[dict]:
@@ -73,7 +73,7 @@ def _oi(oi_prev: float, oi_yest: float, oi_today: float | None = None) -> list[d
 
 @pytest.mark.asyncio
 async def test_dd_dvol_above_threshold_fires_long():
-    """Core happy-path: price down, OI down, DVOL 58 >= 54 → LONG."""
+    """Core happy-path: price down, OI down, DVOL above threshold → LONG."""
     ev = P3OIPDEvaluator()
     with (
         patch("app.signals.p3_oipd_signal.get_dvol_snapshot", new_callable=AsyncMock, return_value=_DVOL_58),
@@ -142,7 +142,7 @@ async def test_uu_regime_no_signal():
 
 @pytest.mark.asyncio
 async def test_dvol_below_threshold_blocks_dd():
-    """DD regime but DVOL 50 < 54 → no trade (regime filter)."""
+    """DD regime but DVOL=50 below regime filter → no trade."""
     ev = P3OIPDEvaluator()
     with (
         patch("app.signals.p3_oipd_signal.get_dvol_snapshot", new_callable=AsyncMock, return_value=_DVOL_50),
@@ -159,11 +159,11 @@ async def test_dvol_below_threshold_blocks_dd():
 
 
 @pytest.mark.asyncio
-async def test_dvol_exactly_at_threshold_fires():
-    """Boundary: DVOL == 54.0 (>= threshold) → should fire."""
+async def test_dvol_at_boundary_fires():
+    """Boundary: DVOL at edge fixture (>= threshold with default env) → should fire."""
     ev = P3OIPDEvaluator()
     with (
-        patch("app.signals.p3_oipd_signal.get_dvol_snapshot", new_callable=AsyncMock, return_value=_DVOL_54),
+        patch("app.signals.p3_oipd_signal.get_dvol_snapshot", new_callable=AsyncMock, return_value=_DVOL_EDGE),
         patch("app.signals.p3_oipd_signal.fetch_klines_close", new_callable=AsyncMock,
               return_value=_klines(65_000, 63_000)),
         patch("app.signals.p3_oipd_signal.fetch_oi_history", new_callable=AsyncMock,
@@ -270,9 +270,9 @@ async def test_side_is_always_long():
 
 @pytest.mark.asyncio
 async def test_custom_dvol_threshold():
-    """dvol_threshold override works — P3_OIPD_DD_57 variant."""
-    ev = P3OIPDEvaluator(strategy_name="P3_OIPD_DD_57", dvol_threshold=57.0)
-    dvol_55 = {**_DVOL_58, "dvol": 55.0}   # below 57 → should not fire
+    """dvol_threshold override works — explicit custom threshold blocks trades below it."""
+    ev = P3OIPDEvaluator(strategy_name="P3_OIPD_DD_B", dvol_threshold=57.0)
+    dvol_55 = {**_DVOL_58, "dvol": 55.0}   # below custom 57 → should not fire
     with (
         patch("app.signals.p3_oipd_signal.get_dvol_snapshot", new_callable=AsyncMock, return_value=dvol_55),
         patch("app.signals.p3_oipd_signal.fetch_klines_close", new_callable=AsyncMock,
@@ -283,4 +283,4 @@ async def test_custom_dvol_threshold():
         sig = await ev.evaluate("BTCUSDT")
 
     assert sig.entry_signal is False
-    assert sig.strategy_name == "P3_OIPD_DD_57"
+    assert sig.strategy_name == "P3_OIPD_DD_B"

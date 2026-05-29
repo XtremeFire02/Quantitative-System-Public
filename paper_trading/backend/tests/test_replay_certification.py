@@ -17,9 +17,16 @@ Run:
   pytest tests/test_replay_certification.py -v
 """
 import math
+import os
 
 import pandas as pd
 import pytest
+
+# Threshold-sensitive unit tests require strategy env vars to be set.
+# They are skipped automatically when env vars are absent (public repo, CI without secrets).
+_DVOL_TH = float(os.getenv("DVOL_THRESHOLD", "0"))
+_N3Z_TH  = float(os.getenv("N3Z_THRESHOLD",  "0"))
+_thresholds_configured = _DVOL_TH > 0 and _N3Z_TH > 0
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -42,18 +49,20 @@ def _import_build():
 
 # ── 1. Frozen rule unit tests ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not _thresholds_configured, reason="Set DVOL_THRESHOLD and N3Z_THRESHOLD env vars to run threshold filter tests")
 def test_no_trades_below_dvol_threshold():
     bt, cs = _import_build()
-    df = _make_daily(dvol=50.0, n3z=1.5)   # DVOL=50 < 54 → no signal
+    df = _make_daily(dvol=_DVOL_TH - 5.0, n3z=_N3Z_TH + 0.5)   # DVOL below threshold → no signal
     result = bt(df)
-    assert len(result) == 0, "DVOL below 54 must produce no trades"
+    assert len(result) == 0, "DVOL below threshold must produce no trades"
 
 
+@pytest.mark.skipif(not _thresholds_configured, reason="Set DVOL_THRESHOLD and N3Z_THRESHOLD env vars to run threshold filter tests")
 def test_no_trades_below_n3z_threshold():
     bt, cs = _import_build()
-    df = _make_daily(dvol=60.0, n3z=0.5)   # n3z=0.5 < 0.75 → no signal
+    df = _make_daily(dvol=_DVOL_TH + 5.0, n3z=_N3Z_TH - 0.3)   # n3z below threshold → no signal
     result = bt(df)
-    assert len(result) == 0, "N3z below 0.75 must produce no trades"
+    assert len(result) == 0, "N3z below threshold must produce no trades"
 
 
 def test_long_entries_when_both_thresholds_met():

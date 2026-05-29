@@ -3,9 +3,11 @@ Historical replay — verifies that the live backend logic reproduces
 the research backtest numbers: ~199 trades, Sharpe ~+2.95 OOS 2024-2026.
 
 Reads the same parquet files used by research/21_strategy_backtest.py
-and applies the frozen strategy rule (N3z > 0.75 AND DVOL >= 54).
+and applies the frozen strategy rule (N3z > threshold AND DVOL >= regime filter).
 Parquet files are stored locally and excluded from the repository.
+Strategy thresholds are loaded from environment variables.
 """
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,9 +22,9 @@ KLINES_PATH = _DATA_RAW / "BTCUSDT_1m_klines.parquet"
 DVOL_PATH = _DATA_RAW / "BTC_deribit_dvol_1h.parquet"
 FUNDING_PATH = _DATA_RAW / "BTCUSDT_funding.parquet"
 
-# Frozen strategy parameters
-N3Z_THRESH = 0.75
-DVOL_THRESH = 54.0
+# Frozen strategy parameters — thresholds loaded from environment variables.
+N3Z_THRESH = float(os.getenv("N3Z_THRESHOLD", "0"))
+DVOL_THRESH = float(os.getenv("DVOL_THRESHOLD", "0"))
 DVOL_LOOKBACK_HOURS = 30 * 24   # 720
 ONE_WAY_COST = 0.0003            # 3bp per leg (maker fee + slippage)
 

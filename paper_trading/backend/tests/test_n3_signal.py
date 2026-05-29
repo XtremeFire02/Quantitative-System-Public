@@ -42,48 +42,51 @@ def _eval(
 # ---------------------------------------------------------------------------
 
 def test_long_signal_fires_when_n3z_above_threshold_and_dvol_above_threshold():
-    """n3_z > 0.75 AND dvol >= 54 → entry_signal=True, side='long'."""
-    # dvol=60, mean=50, std=10  →  n3_z = (60-50)/10 = 1.0  > 0.75 ✓
-    # dvol=60 >= 54 ✓
-    sig = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=10.0)
+    """Both z-score and DVOL filters pass → entry_signal=True, side='long'."""
+    # n3_z = (60-50)/10 = 1.0 above threshold; dvol=60 above regime filter
+    sig = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is True
     assert sig.side == "long"
 
 
 def test_no_signal_when_dvol_below_threshold():
-    """dvol < 54 blocks signal regardless of n3_z value."""
-    # dvol=53, mean=40, std=5  →  n3_z = (53-40)/5 = 2.6  > 0.75 ✓
-    # but dvol=53 < 54 → regime filter blocks
-    sig = _eval(dvol=53.0, dvol_mean_30d=40.0, dvol_std_30d=5.0)
+    """DVOL below regime filter blocks signal regardless of n3_z."""
+    # n3_z = (53-40)/5 = 2.6 — z-score passes; dvol=53 < regime filter blocks
+    sig = _eval(dvol=53.0, dvol_mean_30d=40.0, dvol_std_30d=5.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is False
 
 
 def test_no_signal_when_n3z_at_or_below_threshold_even_if_dvol_passes():
-    """n3_z <= 0.75 with dvol >= 54 → no signal."""
-    # dvol=60, mean=52.5, std=10  →  n3_z = (60-52.5)/10 = 0.75  NOT > 0.75 (strict)
-    sig = _eval(dvol=60.0, dvol_mean_30d=52.5, dvol_std_30d=10.0)
+    """n3_z at or below threshold with DVOL above filter → no signal."""
+    # n3_z = (60-55)/10 = 0.5 — exactly at threshold, not strictly greater
+    sig = _eval(dvol=60.0, dvol_mean_30d=55.0, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is False
 
 
 # ---------------------------------------------------------------------------
-# Boundary: dvol threshold
+# Boundary: dvol threshold (explicit thresholds, tests the >= logic)
 # ---------------------------------------------------------------------------
 
-def test_dvol_exactly_54_fires():
-    """Boundary: dvol == 54.0 (>= threshold) should fire if n3_z > 0.75."""
-    # n3_z = (54 - 40) / 10 = 1.4 > 0.75 ✓
-    sig = _eval(dvol=54.0, dvol_mean_30d=40.0, dvol_std_30d=10.0)
+def test_dvol_exactly_at_threshold_fires():
+    """Boundary: dvol == threshold (>= is inclusive) → fires when n3_z > threshold."""
+    # n3_z = (65 - 40) / 10 = 2.5; dvol=65 >= 65 ✓
+    sig = _eval(dvol=65.0, dvol_mean_30d=40.0, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=65.0)
 
     assert sig.entry_signal is True
 
 
-def test_dvol_53_9_does_not_fire():
-    """Boundary: dvol = 53.9 < 54 → regime filter blocks."""
-    # n3_z = (53.9 - 40) / 10 = 1.39 > 0.75 ✓ but dvol fails filter
-    sig = _eval(dvol=53.9, dvol_mean_30d=40.0, dvol_std_30d=10.0)
+def test_dvol_one_below_threshold_does_not_fire():
+    """Boundary: dvol just below threshold → regime filter blocks."""
+    # n3_z high enough; dvol=64.9 < 65 → blocks
+    sig = _eval(dvol=64.9, dvol_mean_30d=40.0, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=65.0)
 
     assert sig.entry_signal is False
 
@@ -92,19 +95,21 @@ def test_dvol_53_9_does_not_fire():
 # Boundary: n3_z threshold (strict >)
 # ---------------------------------------------------------------------------
 
-def test_n3z_exactly_0_75_does_not_fire():
-    """n3_z = 0.75 exactly does NOT fire (strict > comparison)."""
-    # dvol=57.5, mean=50, std=10  →  n3_z = 7.5/10 = 0.75  (not > 0.75)
-    sig = _eval(dvol=57.5, dvol_mean_30d=50.0, dvol_std_30d=10.0)
+def test_n3z_exactly_at_threshold_does_not_fire():
+    """n3_z exactly at threshold does NOT fire (strict > comparison)."""
+    # n3_z = 5.0/10 = 0.5 exactly at threshold=0.5 → not strictly greater
+    sig = _eval(dvol=60.0, dvol_mean_30d=55.0, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is False
-    assert sig.metadata["n3_z"] == pytest.approx(0.75, abs=1e-9)
+    assert sig.metadata["n3_z"] == pytest.approx(0.5, abs=1e-9)
 
 
-def test_n3z_0_76_fires():
-    """n3_z = 0.76 > 0.75 → fires when dvol >= 54."""
-    # dvol=57.6, mean=50, std=10  →  n3_z = 7.6/10 = 0.76  > 0.75 ✓
-    sig = _eval(dvol=57.6, dvol_mean_30d=50.0, dvol_std_30d=10.0)
+def test_n3z_above_threshold_fires():
+    """n3_z just above threshold → fires when dvol passes filter."""
+    # n3_z = 5.1/10 = 0.51 > 0.5 ✓
+    sig = _eval(dvol=60.0, dvol_mean_30d=54.9, dvol_std_30d=10.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is True
 
@@ -115,11 +120,12 @@ def test_n3z_0_76_fires():
 
 def test_zero_dvol_std_30d_yields_n3z_zero_and_no_crash():
     """With dvol_std_30d=0, n3_z must be 0.0 (not a ZeroDivisionError)."""
-    sig = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=0.0)
+    sig = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=0.0,
+                n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.n3_z == 0.0
     assert sig.metadata["n3_z"] == 0.0
-    # n3_z=0.0 is not > 0.75, so no entry even if dvol filter passes
+    # n3_z=0.0 is not > threshold, so no entry
     assert sig.entry_signal is False
 
 
@@ -128,23 +134,27 @@ def test_zero_dvol_std_30d_yields_n3z_zero_and_no_crash():
 # ---------------------------------------------------------------------------
 
 def test_custom_n3z_threshold_overrides_default():
-    """n3z_threshold=0.5 fires at n3_z=0.6 which would be blocked at default 0.75."""
-    # dvol=56, mean=50, std=10  →  n3_z = 0.6  > 0.5 ✓  but < 0.75 (default)
-    sig_default = _eval(dvol=56.0, dvol_mean_30d=50.0, dvol_std_30d=10.0)
-    assert sig_default.entry_signal is False
+    """Explicit n3z_threshold=0.5 fires at n3_z=0.6 which is blocked at 0.9."""
+    # dvol=60, mean=50, std=10  →  n3_z = 1.0  > 0.5 ✓  but NOT > 0.9
+    sig_high_th = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=10.0,
+                        n3z_threshold=0.9, dvol_threshold=55.0)
+    assert sig_high_th.entry_signal is False
 
-    sig_custom = _eval(dvol=56.0, dvol_mean_30d=50.0, dvol_std_30d=10.0, n3z_threshold=0.5)
-    assert sig_custom.entry_signal is True
-    assert sig_custom.metadata["n3z_threshold"] == 0.5
+    sig_low_th = _eval(dvol=60.0, dvol_mean_30d=50.0, dvol_std_30d=10.0,
+                       n3z_threshold=0.5, dvol_threshold=55.0)
+    assert sig_low_th.entry_signal is True
 
 
 def test_custom_dvol_threshold_overrides_default():
-    """dvol_threshold=57 blocks dvol=56 which would pass at default 54."""
-    # n3_z = (56-40)/10 = 1.6 > 0.75 ✓, but dvol=56 < custom threshold 57
-    sig = _eval(dvol=56.0, dvol_mean_30d=40.0, dvol_std_30d=10.0, dvol_threshold=57.0)
+    """Explicit dvol_threshold=65 blocks dvol=60 which passes at dvol_threshold=55."""
+    # n3_z = (60-40)/10 = 2.0 — z-score passes both; dvol=60 blocked by threshold 65
+    sig_high_th = _eval(dvol=60.0, dvol_mean_30d=40.0, dvol_std_30d=10.0,
+                        n3z_threshold=0.5, dvol_threshold=65.0)
+    assert sig_high_th.entry_signal is False
 
-    assert sig.entry_signal is False
-    assert sig.metadata["dvol_threshold"] == 57.0
+    sig_low_th = _eval(dvol=60.0, dvol_mean_30d=40.0, dvol_std_30d=10.0,
+                       n3z_threshold=0.5, dvol_threshold=55.0)
+    assert sig_low_th.entry_signal is True
 
 
 # ---------------------------------------------------------------------------
@@ -153,16 +163,18 @@ def test_custom_dvol_threshold_overrides_default():
 
 def test_long_only_true_negative_n3z_never_fires():
     """long_only=True: very negative n3_z must never produce an entry signal."""
-    # dvol=60, mean=80, std=10  →  n3_z = -2.0  <  -0.75  but long_only=True
-    sig = _eval(dvol=60.0, dvol_mean_30d=80.0, dvol_std_30d=10.0, long_only=True)
+    # n3_z = -2.0 — below -threshold, but long_only=True suppresses short leg
+    sig = _eval(dvol=60.0, dvol_mean_30d=80.0, dvol_std_30d=10.0,
+                long_only=True, n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is False
 
 
 def test_long_only_false_very_negative_n3z_fires_short():
-    """long_only=False: n3_z < -0.75 with dvol >= 54 → fires a short signal."""
-    # dvol=60, mean=80, std=10  →  n3_z = -2.0  <  -0.75 ✓
-    sig = _eval(dvol=60.0, dvol_mean_30d=80.0, dvol_std_30d=10.0, long_only=False)
+    """long_only=False: n3_z below -threshold with DVOL above filter → short signal."""
+    # n3_z = (60-80)/10 = -2.0 — well below -threshold
+    sig = _eval(dvol=60.0, dvol_mean_30d=80.0, dvol_std_30d=10.0,
+                long_only=False, n3z_threshold=0.5, dvol_threshold=55.0)
 
     assert sig.entry_signal is True
     assert sig.side == "short"
@@ -222,5 +234,3 @@ def test_metadata_values_are_correct():
 
     assert sig.metadata["n3_z"] == pytest.approx(1.0, abs=1e-4)
     assert sig.metadata["dvol"] == pytest.approx(60.0, abs=1e-4)
-    assert sig.metadata["dvol_threshold"] == 54.0   # frozen default
-    assert sig.metadata["n3z_threshold"] == 0.75    # frozen default

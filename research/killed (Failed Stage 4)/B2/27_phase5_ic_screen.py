@@ -48,7 +48,7 @@ Run from repo root:
   python research/active/p5/27_phase5_ic_screen.py
 """
 from __future__ import annotations
-import sys, io, warnings
+import os, sys, io, warnings
 import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
@@ -58,6 +58,9 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 warnings.filterwarnings("ignore")
 sys.path.insert(0, ".")
 from framework.costs import CostModel
+
+# N3 DVOL regime filter threshold — loaded from env; see paper_trading/.env.example.
+_DVOL_TH = float(os.getenv("DVOL_THRESHOLD", "0"))
 
 RAW       = Path("data/raw")
 MAKER     = CostModel(use_maker=True)
@@ -167,10 +170,10 @@ def screen_signal(label, signal_col, daily, oos, n3z_col="n3z"):
             n_oos_correct += 1
     print(f"  Direction stability: {n_oos_correct}/{len(OOS_PERIODS)} OOS periods correct")
 
-    # 3. DVOL >= 54 filter
+    # 3. DVOL regime filter (threshold from env — see .env.example)
     print()
-    print(f"--- 3. DVOL >= 54 REGIME FILTER ---")
-    oos_f = oos[oos["dvol"] >= 54]
+    print(f"--- 3. DVOL REGIME FILTER ---")
+    oos_f = oos[oos["dvol"] >= _DVOL_TH]
     if len(oos_f) >= 30:
         xf = np.array(oos_f[signal_col])
         yf = np.array(oos_f["r24h_net"])
@@ -179,7 +182,7 @@ def screen_signal(label, signal_col, daily, oos, n3z_col="n3z"):
         filtered_pass = (ic_f is not None and ic_f > 0 and
                          ratio_f is not None and ratio_f > 1.0 and
                          p_f <= 0.05)
-        print(f"  n (DVOL>=54) : {len(oos_f)}")
+        print(f"  n (DVOL>=filter) : {len(oos_f)}")
         print(f"  IC (filtered): {ic_f:+.4f}")
         print(f"  Ratio        : {ratio_f:.3f}x")
         print(f"  p-boot       : {p_f:.4f}")
@@ -187,7 +190,7 @@ def screen_signal(label, signal_col, daily, oos, n3z_col="n3z"):
     else:
         ic_f = ratio_f = p_f = np.nan
         filtered_pass = False
-        print(f"  Too few obs in DVOL>=54 regime ({len(oos_f)})")
+        print(f"  Too few obs in DVOL regime filter ({len(oos_f)})")
 
     # 4. Hold-period comparison (4h, 8h, 24h)
     print()

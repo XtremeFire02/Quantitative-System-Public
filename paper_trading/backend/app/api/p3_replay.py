@@ -2,15 +2,16 @@
 P3 OI-Price Divergence historical replay.
 
 Reads the same parquet files used by research/24_deepdive.py and applies
-the frozen P3 rule: DD regime AND DVOL >= threshold, long, 24h hold.
+the frozen P3 rule: DD regime AND DVOL >= regime filter, long, 24h hold.
 
-Reference target (OOS 2024+, DVOL>=54, 24h hold):
-  n=99, Sharpe=+5.37, PnL=+9510bp, MaxDD=-972bp, Win=65.7%
+Reference target (OOS 2024+, 24h hold): n=99, Sharpe=+5.37, PnL=+9510bp,
+MaxDD=-972bp, Win=65.7%. Strategy thresholds are loaded from environment variables.
 
 Any significant deviation from these targets indicates a bug in the
 live evaluator or a data alignment problem.
 """
 import math
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,15 +38,16 @@ PERIODS = [
     ("OOS 2026-YTD", "2026-01-01", "2099-01-01"),
 ]
 
-# Reference numbers from research/24_deepdive.py — OOS 2024+, DVOL>=54, 24h hold
+_DVOL_TH = float(os.getenv("DVOL_THRESHOLD", "0"))
+
+# Reference numbers from research/24_deepdive.py — OOS 2024+, 24h hold
 REFERENCE = {
-    "dvol_threshold": 54.0,
     "n_trades":       99,
     "sharpe":         5.37,
     "total_pnl_bp":   9510,
     "max_dd_bp":      -972,
     "win_rate":       0.657,
-    "note":           "OOS 2024-2026 from research/24_deepdive.py (DD regime, DVOL>=54, 24h hold, maker cost)",
+    "note":           "OOS 2024-2026 from research/24_deepdive.py (DD regime, DVOL>=threshold, 24h hold, maker cost)",
 }
 
 router = APIRouter()
@@ -53,14 +55,14 @@ router = APIRouter()
 
 @router.get("/replay/p3")
 def run_p3_replay(
-    dvol_threshold: float = Query(default=54.0, description="DVOL >= threshold to take trade"),
+    dvol_threshold: float = Query(default=_DVOL_TH, description="DVOL >= threshold to take trade"),
     start: str = Query(default="2024-01-01", description="OOS start date (YYYY-MM-DD)"),
     include_train: bool = Query(default=False),
 ):
     """
     Historical replay of the P3 OI-PD DD-regime strategy.
 
-    Reference (OOS 2024+, DVOL>=54, 24h hold): n=99, Sharpe=+5.37, PnL=+9510bp.
+    Reference (OOS 2024+, 24h hold): n=99, Sharpe=+5.37, PnL=+9510bp.
     A Sharpe within ±1.0 and PnL within ±1500bp of reference is considered a match.
     """
     for path, label in [
@@ -174,7 +176,7 @@ def run_p3_replay(
 
     # ── Reference match check ────────────────────────────────────────────────
     match_note = None
-    if dvol_threshold == 54.0 and start == "2024-01-01":
+    if dvol_threshold == _DVOL_TH and start == "2024-01-01":
         sh_diff  = abs((summary["sharpe"] or 0) - REFERENCE["sharpe"])
         pnl_diff = abs(summary["total_pnl_bp"] - REFERENCE["total_pnl_bp"])
         n_diff   = abs(summary["n_trades"]      - REFERENCE["n_trades"])

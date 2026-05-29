@@ -45,7 +45,7 @@ AVAILABLE_STRATEGIES: dict = {
     # ── Official validated strategies ─────────────────────────────────────────
     "N3_DVOL_LONG": {
         "display_name": "N3 DVOL — Long Only",
-        "description": "Enter long when DVOL 30d z-score > 0.75 and DVOL ≥ 54. Exit after 24h. OOS 2024–2026: Sharpe +2.95, n=199 trades.",
+        "description": "DVOL 30-day z-score signal with volatility-regime filter. Long-only, 24h hold. OOS 2024–2026: Sharpe +2.95, n=199 trades. Entry thresholds are private.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -54,7 +54,7 @@ AVAILABLE_STRATEGIES: dict = {
     },
     "N3_DVOL_LONGSHORT": {
         "display_name": "N3 DVOL — Long + Short",
-        "description": "N3 DVOL with both long (z > 0.75) and short (z < −0.75) legs, DVOL ≥ 54. Short leg Sharpe +0.81 — lower edge than long-only.",
+        "description": "N3 DVOL with both long and short legs using symmetric z-score thresholds and DVOL regime filter. Short leg Sharpe +0.81 — lower edge than long-only.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -63,30 +63,29 @@ AVAILABLE_STRATEGIES: dict = {
     },
 
     # ── Shadow research variants ───────────────────────────────────────────────
-    # Looser thresholds → more live observations → faster forward IC accumulation.
-    # Trades are clearly separated in the DB by strategy_name.
-    # Results must NOT be merged with the official N3 record.
-    "N3_SHADOW_050_51": {
-        "display_name": "N3 Shadow — z>0.50, DVOL≥51",
-        "description": "Shadow variant: N3z > 0.50 and DVOL ≥ 51. Fires more often than official N3. Shadow research only — do not compare to validated N3 results.",
+    # Relaxed threshold variants accumulate more live observations for faster
+    # forward IC estimation. Results must NOT be merged with the official N3 record.
+    "N3_SHADOW_A": {
+        "display_name": "N3 Shadow — Variant A",
+        "description": "Shadow variant with relaxed z-score and DVOL thresholds. Fires more often than official N3. Shadow research only.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
         "tags": ["shadow", "mean-reversion", "vol-signal"],
         "status": "shadow",
     },
-    "N3_SHADOW_075_51": {
-        "display_name": "N3 Shadow — z>0.75, DVOL≥51",
-        "description": "Shadow variant: same N3z threshold as official, but DVOL filter relaxed to ≥ 51. Tests whether DVOL=51–53 days have edge.",
+    "N3_SHADOW_B": {
+        "display_name": "N3 Shadow — Variant B",
+        "description": "Shadow variant with same z-score threshold as official N3 but relaxed DVOL filter. Tests whether lower-fear days carry edge.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
         "tags": ["shadow", "mean-reversion", "vol-signal"],
         "status": "shadow",
     },
-    "N3_SHADOW_050_46": {
-        "display_name": "N3 Shadow — z>0.50, DVOL≥46",
-        "description": "Shadow variant: both thresholds relaxed. Fires in low-IV environments. Expected to show weak or no edge based on backtest — confirms regime dependence in live data.",
+    "N3_SHADOW_C": {
+        "display_name": "N3 Shadow — Variant C",
+        "description": "Shadow variant with both thresholds relaxed. Expected to show weaker edge based on backtest — confirms regime dependence in live data.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
@@ -97,25 +96,25 @@ AVAILABLE_STRATEGIES: dict = {
     # ── P3 OI-Price Divergence shadow variants ────────────────────────────────
     "P3_OIPD_DD": {
         "display_name": "P3 OI-Price Divergence (DD)",
-        "description": "OI-Price divergence strategy, drawdown-regime filter. Shadow research — not yet through the full kill-attempt pipeline independently.",
+        "description": "OI-Price divergence, DD-regime (simultaneous price decline + OI contraction) with DVOL filter. Shadow research.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
         "tags": ["shadow", "oi-divergence", "vol-signal"],
         "status": "shadow",
     },
-    "P3_OIPD_DD_57": {
-        "display_name": "P3 OI-Price Divergence (DD-57)",
-        "description": "P3 OI-Price divergence with elevated DVOL threshold variant.",
+    "P3_OIPD_DD_B": {
+        "display_name": "P3 OI-Price Divergence (DD — Variant B)",
+        "description": "P3 OI-Price divergence with elevated DVOL threshold sensitivity variant.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,
         "tags": ["shadow", "oi-divergence", "vol-signal"],
         "status": "shadow",
     },
-    "P3_OIPD_DD_60": {
-        "display_name": "P3 OI-Price Divergence (DD-60)",
-        "description": "P3 OI-Price divergence with highest DVOL threshold variant.",
+    "P3_OIPD_DD_C": {
+        "display_name": "P3 OI-Price Divergence (DD — Variant C)",
+        "description": "P3 OI-Price divergence with highest DVOL threshold sensitivity variant.",
         "compatible_markets": ["BTCUSDT"],
         "hold_hours": 24,
         "requires_dvol": True,

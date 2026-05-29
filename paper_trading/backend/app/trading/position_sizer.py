@@ -38,7 +38,7 @@ from app.config import (
 @dataclass
 class SizingInput:
     signal_strength: float    # 0–1 confidence; 1.0 = maximum conviction
-    asset_vol_ann: float      # annualized decimal vol (e.g. DVOL=54 → 0.54)
+    asset_vol_ann: float      # annualized decimal vol (e.g. DVOL=50 → 0.50)
     available_capital: float  # current portfolio equity in USD
     strategy_name: str
 

@@ -27,6 +27,7 @@ Run from repo root:
 """
 from __future__ import annotations
 import sys, io, warnings
+import os
 import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
@@ -36,6 +37,10 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 warnings.filterwarnings("ignore")
 sys.path.insert(0, ".")
 from framework.costs import CostModel
+
+# N3 reference thresholds — loaded from env; see paper_trading/.env.example.
+_N3Z_TH   = float(os.getenv("N3Z_THRESHOLD",  "0"))
+_DVOL_TH  = float(os.getenv("DVOL_THRESHOLD", "0"))
 
 RAW       = Path("data/raw")
 MAKER     = CostModel(use_maker=True)
@@ -158,8 +163,8 @@ df["s1a"]     = -roll_skew    # contrarian: higher = more negative skew
 for h in [4, 8, 24]:
     df[f"r{h}h_net"] = df[f"r{h}h"] - MAKER_RT
 
-# N3 entry condition for comparison
-df["n3_fires"] = (df["n3z"] >= 0.75) & (df["dvol"] >= 54)
+# N3 entry condition for comparison (thresholds from env — see .env.example)
+df["n3_fires"] = (df["n3z"] > _N3Z_TH) & (df["dvol"] >= _DVOL_TH)
 
 print(f"  1m bars: {len(df):,}  ({df.index.min().date()} to {df.index.max().date()})")
 
@@ -241,7 +246,7 @@ print()
 print(f"  {'DVOL>=':<8} {'n':>5}  {'IC':>8}  {'Ratio':>8}  {'p-boot':>8}  {'Hit%':>6}  Pass?")
 print(f"  {'-'*65}")
 
-best_dvol = 54
+best_dvol = _DVOL_TH  # initial placeholder; updated during sweep
 best_p    = 1.0
 
 for thresh in [0, 48, 50, 52, 54, 56, 58, 60]:
@@ -318,7 +323,7 @@ print()
 
 # Combined rule
 dvol_ok = oos["dvol"] >= best_dvol
-n3z_ok  = oos["n3z"]  >= 0.75
+n3z_ok  = oos["n3z"]  > _N3Z_TH
 
 for thresh_s1a in [0.0, 0.5, 1.0]:
     s1a_ok = oos["s1a"] >= thresh_s1a
@@ -370,9 +375,9 @@ print(f"  Calmar ratio  : {(pnl.mean()*252*10000)/abs(dd):.2f}" if dd < 0 else "
 print()
 
 # Comparison to N3
-n3_trades = oos[(oos["n3z"] >= 0.75) & (oos["dvol"] >= 54)]["r24h_net"].dropna()
+n3_trades = oos[(oos["n3z"] > _N3Z_TH) & (oos["dvol"] >= _DVOL_TH)]["r24h_net"].dropna()
 print(f"  --- Frequency comparison ---")
-print(f"  N3 (N3z>=0.75, DVOL>=54)       : {len(n3_trades):>3} trades  ({len(n3_trades)/oos_weeks:.1f}/wk)")
+print(f"  N3 (N3z>threshold, DVOL>=filter): {len(n3_trades):>3} trades  ({len(n3_trades)/oos_weeks:.1f}/wk)")
 print(f"  S1a (S1a>={ENTRY_THRESH}, DVOL>={best_dvol}) : {len(pnl):>3} trades  ({len(pnl)/oos_weeks:.1f}/wk)")
 print()
 
@@ -433,7 +438,7 @@ print()
 print(f"  {'S1a>=':<6}  {'DVOL>=':<8}  {'n':>5}  {'n/wk':>6}  {'n/yr':>6}  {'Sharpe':>8}  {'Mean(bp)':>9}")
 print(f"  {'-'*70}")
 
-for dvol_t in [0, 52, 54]:
+for dvol_t in [0, 52, 56]:
     for k in [-1.0, 0.0, 0.5, 1.0, 1.5]:
         mask = (oos["s1a"] >= k)
         if dvol_t > 0:
@@ -447,8 +452,8 @@ for dvol_t in [0, 52, 54]:
         print(f"  {k:<6.1f}  {dvol_t if dvol_t > 0 else 'none':<8}  {len(sub):>5}  {nwk:>5.1f}  {nyr:>5.0f}  {sh:>8.2f}  {sub.mean()*10000:>+8.1f}bp")
 
 print()
-print("  N3 baseline: n3z>=0.75, dvol>=54")
-n3b = oos[(oos["n3z"] >= 0.75) & (oos["dvol"] >= 54)]["r24h_net"].dropna()
+print("  N3 baseline (thresholds from env)")
+n3b = oos[(oos["n3z"] > _N3Z_TH) & (oos["dvol"] >= _DVOL_TH)]["r24h_net"].dropna()
 sh_n3 = (n3b.mean() / n3b.std()) * np.sqrt(252) if n3b.std() > 0 else np.nan
 print(f"  N3              : n={len(n3b):>3}  {len(n3b)/oos_weeks:.1f}/wk  {len(n3b)/((oos.index[-1]-oos.index[0]).days/365.25):.0f}/yr  Sh={sh_n3:.2f}  {n3b.mean()*10000:+.1f}bp")
 print()

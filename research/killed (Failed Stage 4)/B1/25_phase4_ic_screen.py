@@ -10,7 +10,7 @@ Design decisions:
   - Daily non-overlapping observations (sample every 1440 1m bars).
   - Block bootstrap: block = 21 days (captures monthly autocorrelation).
   - Breakeven IC (IC*) computed from maker round-trip cost and observed return sigma.
-  - Regime filter: DVOL >= 54 tested as an overlay (following N3 and P3 precedent).
+  - Regime filter: DVOL >= threshold tested as an overlay (following N3 and P3 precedent).
   - Independence check: incremental IC of each signal residualised on N3z.
   - Missing data files cause that signal to be skipped with a clear message.
 
@@ -25,6 +25,7 @@ Pass criterion (same gate used in P3):
 from __future__ import annotations
 import sys, io, warnings
 import numpy as np
+import os
 import pandas as pd
 from scipy import stats as sp_stats
 from pathlib import Path
@@ -34,6 +35,9 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 warnings.filterwarnings("ignore")
 sys.path.insert(0, ".")
 from framework.costs import CostModel
+
+# DVOL regime filter threshold — loaded from env; see paper_trading/.env.example.
+_DVOL_TH = float(os.getenv("DVOL_THRESHOLD", "0"))
 
 RAW       = Path("data/raw")
 MAKER     = CostModel(use_maker=True)
@@ -166,9 +170,9 @@ def screen_signal(label, daily, sig_col, ret_col, direction=1, n3z_col="n3_z"):
     stability_flag = same_sign >= 3
     print(f"  Direction stability: {stability} OOS periods correct")
 
-    # 3. DVOL >= 54 filtered
-    print(f"\n--- 3. DVOL >= 54 REGIME FILTER ---")
-    dvol_filt = sub[sub["dvol"] >= 54].copy()
+    # 3. DVOL regime filter (threshold from env — see .env.example)
+    print(f"\n--- 3. DVOL REGIME FILTER ---")
+    dvol_filt = sub[sub["dvol"] >= _DVOL_TH].copy()
     ic_filt = ratio_filt = p_filt = np.nan
     verdict_filtered = False
     if len(dvol_filt) < 20:
@@ -179,7 +183,7 @@ def screen_signal(label, daily, sig_col, ret_col, direction=1, n3z_col="n3_z"):
                                    direction=direction)
         verdict_filtered = (np.isfinite(ic_filt) and np.sign(ic_filt) == direction
                             and ratio_filt > 1.0 and p_filt < 0.05)
-        print(f"  n (DVOL >= 54)   : {len(dvol_filt)}")
+        print(f"  n (DVOL >= filter): {len(dvol_filt)}")
         print(f"  IC (filtered)    : {ic_filt:>+.4f}")
         print(f"  Ratio (filtered) : {ratio_filt:>7.3f}x")
         print(f"  p-boot (filtered): {p_filt:.4f}")

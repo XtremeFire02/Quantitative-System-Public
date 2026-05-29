@@ -14,7 +14,7 @@ Do NOT combine DU short with DD long until each leg is validated
 independently.
 
 Test grid:
-  DVOL thresholds : 54, 57, 60
+  DVOL thresholds : primary, +3, +6 (loaded from DVOL_THRESHOLD env var)
   Hold periods    : 24h, 48h, 72h
   Side            : SHORT only
 
@@ -102,8 +102,9 @@ daily["regime"]   = [classify(dp, doi) for dp, doi in zip(daily["r24h_past"], da
 daily["is_du"]    = (daily["regime"] == "DU").astype(float)
 daily["is_dd"]    = (daily["regime"] == "DD").astype(float)
 
-N3Z_THRESH  = 0.75
-N3_DVOL_THR = 54.0
+import os
+N3Z_THRESH  = float(os.getenv("N3Z_THRESHOLD",  "0"))   # N3 reference — see .env.example
+N3_DVOL_THR = float(os.getenv("DVOL_THRESHOLD", "0"))   # N3 regime filter
 daily["n3_long"] = ((daily["n3_z"] > N3Z_THRESH) &
                     (daily["dvol"] >= N3_DVOL_THR)).astype(float)
 
@@ -126,7 +127,7 @@ OOS = pd.Timestamp("2024-01-01", tz="UTC")
 
 
 # ── Core helpers ───────────────────────────────────────────────────────────────
-def build_trades_short(dly, signal_col, hold_h=24, dvol_lo=54.0, dvol_hi=9999.0,
+def build_trades_short(dly, signal_col, hold_h=24, dvol_lo=N3_DVOL_THR, dvol_hi=9999.0,
                        cost_model=MAKER):
     """
     SHORT when signal_col > 0 and dvol_lo <= dvol < dvol_hi.
@@ -303,7 +304,7 @@ print("SECTION 3: DVOL Threshold x Hold Period Grid — DU SHORT (OOS 2024+)")
 print(SEP)
 print(f"{'DVOL>=':>7}  {'Hold':>5}  {'n':>5}  {'Sharpe':>8}  {'PnL(bp)':>10}  {'MaxDD(bp)':>10}  {'Win%':>6}  {'p-boot':>8}")
 
-for dvol_lo in [54, 57, 60]:
+for dvol_lo in [N3_DVOL_THR, N3_DVOL_THR + 3, N3_DVOL_THR + 6]:
     for h in [24, 48, 72]:
         t = build_trades_short(daily_oos, "is_du", hold_h=h, dvol_lo=dvol_lo)
         s = stats(t)
@@ -315,10 +316,10 @@ for dvol_lo in [54, 57, 60]:
 
 
 # ============================================================================
-# SECTION 4 — Period Breakdown (DU short, DVOL>=54, 24h)
+# SECTION 4 — Period Breakdown (DU short, DVOL>=threshold, 24h)
 # ============================================================================
 print(f"\n{SEP}")
-print("SECTION 4: Period Breakdown — DU SHORT, DVOL>=54, 24h hold")
+print("SECTION 4: Period Breakdown — DU SHORT, DVOL>=threshold, 24h hold")
 print(SEP)
 print(f"{'Period':<16}  {'n':>5}  {'Sharpe':>8}  {'PnL(bp)':>10}  {'MaxDD(bp)':>10}  {'Win%':>6}")
 
@@ -327,7 +328,7 @@ for label, ps, pe in PERIODS:
         (daily.index >= pd.Timestamp(ps, tz="UTC")) &
         (daily.index <  pd.Timestamp(pe, tz="UTC"))
     ]
-    t = build_trades_short(sub, "is_du", hold_h=24, dvol_lo=54.0)
+    t = build_trades_short(sub, "is_du", hold_h=24, dvol_lo=N3_DVOL_THR)
     s = stats(t)
     sh = f"{s['sharpe']:+.3f}" if s["sharpe"] is not None else "  ---"
     print(f"  {label:<14}  {s['n']:>5}  {sh:>8}  {s['pnl_bp']:>+10.1f}  "
@@ -335,16 +336,16 @@ for label, ps, pe in PERIODS:
 
 
 # ============================================================================
-# SECTION 5 — Year-by-Year (DU short, DVOL>=54, 24h)
+# SECTION 5 — Year-by-Year (DU short, DVOL>=threshold, 24h)
 # ============================================================================
 print(f"\n{SEP}")
-print("SECTION 5: Year-by-Year — DU SHORT, DVOL>=54, 24h hold")
+print("SECTION 5: Year-by-Year — DU SHORT, DVOL>=threshold, 24h hold")
 print(SEP)
 print(f"{'Year':<6}  {'n':>5}  {'Sharpe':>8}  {'PnL(bp)':>10}  {'Win%':>6}  {'p-boot':>8}")
 
 for yr in range(2023, 2027):
     sub = daily[daily.index.year == yr]
-    t = build_trades_short(sub, "is_du", hold_h=24, dvol_lo=54.0)
+    t = build_trades_short(sub, "is_du", hold_h=24, dvol_lo=N3_DVOL_THR)
     s = stats(t)
     p = block_bootstrap_p(t) if s["n"] >= 5 else 1.0
     sh = f"{s['sharpe']:+.3f}" if s["sharpe"] is not None else "  ---"
@@ -375,12 +376,12 @@ for (lo, hi), lbl in zip(bands, labels):
 # SECTION 7 — Comparison: DD Long vs DU Short vs Combined
 # ============================================================================
 print(f"\n{SEP}")
-print("SECTION 7: DD Long vs DU Short vs Combined (OOS 2024+, DVOL>=54, 24h)")
+print("SECTION 7: DD Long vs DU Short vs Combined (OOS 2024+, DVOL>=threshold, 24h)")
 print(SEP)
 
 # Build DD long trades for comparison
 daily_oos["r24h_pos"] = daily_oos["r24h"]   # long perspective
-def build_trades_long(dly, signal_col, hold_h=24, dvol_lo=54.0):
+def build_trades_long(dly, signal_col, hold_h=24, dvol_lo=N3_DVOL_THR):
     ret_col  = f"r{hold_h}h"
     fund_col = f"fund_{hold_h}h"
     d = dly.dropna(subset=[signal_col, ret_col, fund_col, "dvol"])
@@ -406,8 +407,8 @@ def build_trades_long(dly, signal_col, hold_h=24, dvol_lo=54.0):
     df_t["cumulative_pnl"] = df_t["net_r"].cumsum()
     return df_t
 
-t_dd = build_trades_long(daily_oos, "is_dd", hold_h=24, dvol_lo=54.0)
-t_du = build_trades_short(daily_oos, "is_du", hold_h=24, dvol_lo=54.0)
+t_dd = build_trades_long(daily_oos, "is_dd", hold_h=24, dvol_lo=N3_DVOL_THR)
+t_du = build_trades_short(daily_oos, "is_du", hold_h=24, dvol_lo=N3_DVOL_THR)
 
 # Combined: all days where either signal fires
 # Note: on days both fire, take the position as sum (long + short = flat, net 0)
@@ -447,7 +448,7 @@ print("(DD and DU are mutually exclusive — price can only go one direction)")
 # SECTION 8 — Independence from N3
 # ============================================================================
 print(f"\n{SEP}")
-print("SECTION 8: DU Short Independence from N3 (OOS 2024+, DVOL>=54, 24h)")
+print("SECTION 8: DU Short Independence from N3 (OOS 2024+, DVOL>=threshold, 24h)")
 print(SEP)
 
 from scipy import stats as sp_stats
@@ -467,7 +468,7 @@ print(f"  N3 only (DU not active):  {n_n3_only}")
 
 # DU excluding N3 days
 daily_oos["is_du_exn3"] = ((daily_oos["is_du"] > 0) & (daily_oos["n3_long"] == 0)).astype(float)
-t_du_exn3 = build_trades_short(daily_oos, "is_du_exn3", hold_h=24, dvol_lo=54.0)
+t_du_exn3 = build_trades_short(daily_oos, "is_du_exn3", hold_h=24, dvol_lo=N3_DVOL_THR)
 s_du_exn3 = stats(t_du_exn3)
 p_du_exn3 = block_bootstrap_p(t_du_exn3) if s_du_exn3["n"] >= 5 else 1.0
 
@@ -508,11 +509,11 @@ print(f"\n{SEP}")
 print("SECTION 10: DU Short Verdict")
 print(SEP)
 
-t_prim = build_trades_short(daily_oos, "is_du", hold_h=24, dvol_lo=54.0)
+t_prim = build_trades_short(daily_oos, "is_du", hold_h=24, dvol_lo=N3_DVOL_THR)
 s_prim = stats(t_prim)
 p_prim = block_bootstrap_p(t_prim) if s_prim["n"] >= 5 else 1.0
 
-print(f"\nPrimary result (OOS 2024+, DVOL>=54, 24h hold):")
+print(f"\nPrimary result (OOS 2024+, DVOL>=threshold, 24h hold):")
 print(f"  n={s_prim['n']}, Sharpe={s_prim['sharpe']}, PnL={s_prim['pnl_bp']:+.0f}bp, "
       f"Win={s_prim['win']*100:.1f}%, {p_str(p_prim)}")
 
