@@ -1,6 +1,6 @@
 # Quantitative Research & Paper Trading System
 
-A personal research project applying institutional-grade signal validation to BTC perpetual futures. Built from scratch over several months — every component, from the backtest engine to the live paper trading dashboard, was written without external frameworks.
+A personal research project applying systematic signal validation to BTC perpetual futures. Built from scratch over several months — every component, from the backtest engine to the live paper trading dashboard, was written without external backtesting or trading frameworks (FastAPI, React, and standard scientific Python libraries are used for infrastructure).
 
 The goal was not to build a black-box strategy optimizer. It was to build a system rigorous enough that I could trust a rejection.
 

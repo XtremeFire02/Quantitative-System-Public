@@ -68,11 +68,12 @@ candidate signals.  The core results are:
 
 \begin{enumerate}
   \item \textbf{P3 (OI-Price Divergence, DD regime) is a statistically
-        independent second alpha.}  The DD regime --- simultaneous
+        independent second candidate signal.}  The DD regime --- simultaneous
         price decline and open-interest contraction --- predicts positive
         24-hour returns with OOS Sharpe $+5.18$ on 57 exclusive trades
         (trades where N3 was not simultaneously active), block-bootstrap
-        $p = 0.007$.  P3 is deployed to shadow paper trading.
+        $p = 0.007$.  All results are conditional on the stated cost model
+        and data assumptions.  P3 is deployed to shadow paper trading.
 
   \item \textbf{P1 (Volatility Risk Premium) is conditionally interesting
         but not independent of N3.}  VRP$^z$ achieves statistically
@@ -1307,8 +1308,8 @@ P3 excl.\ N3 (DVOL $\geq 60$) &  17 & $+1.95$ & $+471$     & $-530$ & 70.6 & 0.0
 
 The critical row is \textbf{P3 excl.\ N3 days}: Sharpe $+5.18$,
 $p_{\mathrm{boot}} = 0.007$ on 57 trades that fired on days when N3
-was completely inactive.  This is the primary evidence that P3 carries
-independent alpha.
+was completely inactive.  This is the primary statistical evidence that P3 carries
+independent signal content under the stated assumptions.
 
 \subsection{Period Breakdown: P3-Exclusive Trades}
 
@@ -1331,7 +1332,7 @@ Sharpe is positive in four of five periods with sufficient trades.
 
 \subsection{Independence Verdict}
 
-\textbf{P3 is an independent alpha from N3.}
+\textbf{P3 passes independence tests from N3 under stated assumptions.}
 
 Evidence:
 \begin{enumerate}
@@ -1575,8 +1576,8 @@ The frozen shadow rule is:
 Strategy name & Status & DVOL threshold & Purpose \\
 \midrule
 \texttt{P3\_OIPD\_DD}     & Primary shadow & $\geq \delta$ & Forward validation \\
-\texttt{P3\_OIPD\_DD\_57} & Research shadow & $\geq 57$ & Sensitivity \\
-\texttt{P3\_OIPD\_DD\_60} & Research shadow & $\geq 60$ & Sensitivity \\
+\texttt{P3\_OIPD\_DD\_B} & Research shadow & $\geq \delta_B$ & Sensitivity variant \\
+\texttt{P3\_OIPD\_DD\_C} & Research shadow & $\geq \delta_C$ & Sensitivity variant \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1606,12 +1607,14 @@ daily returns.  The key results:
         and stop when all over-levered longs are cleared, leaving a
         vacuum into which prices recover.
 
-  \item \textbf{P3 is statistically independent of N3.}  Signal
+  \item \textbf{P3 passes independence tests from N3.}  Signal
         correlation is $+0.027$.  Exclusive P3 trades achieve OOS
         Sharpe $+5.18$ ($p = 0.007$) on 57 trades that occur on days
         N3 is completely inactive.  The combined ``N3 OR P3'' strategy
         achieves $+14{,}741\bp$ OOS cumulative PnL ($+3.79$ Sharpe),
-        the highest of any configuration.
+        the highest of any configuration.  Note: $n = 57$ exclusive
+        trades is a small sample; forward confirmation is required
+        before treating this as a persistent edge.
 
   \item \textbf{VRP (P1) is not independent.}  The IC screen shows
         genuine significance at 48--72h, but the deep dive shows
@@ -1632,6 +1635,15 @@ daily returns.  The key results:
 
 P3 (DD regime, DVOL $\geq \delta$) is deployed to shadow paper trading.
 The 3-month forward review is due $\geq$ 14 August 2026.
+
+\vspace{0.5em}
+\noindent\textit{A conservative reading: P3's OOS Sharpe of $+5.18$ rests on
+57 exclusive trades --- a small sample by any standard.  Crypto Sharpe
+figures are sensitive to the assumed cost model, microstructure frictions,
+and the specific OOS window.  These results should be treated as a strong
+candidate signal under the stated assumptions, not a confirmed persistent
+edge.  The 3-month forward review will provide the first genuinely
+prospective evidence.}
 
 \vspace{1em}
 \noindent\textit{Data: Binance FAPI 1m klines (2023--2026); Binance FAPI
