@@ -4,1651 +4,242 @@
 %% ============================================================
 \documentclass[12pt, a4paper]{article}
 
-\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{amsmath, amssymb}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{geometry}
-\usepackage{xcolor}
-\usepackage{array}
-\usepackage{multirow}
 \usepackage{enumitem}
-\usepackage{caption}
-\usepackage{float}
-\usepackage{parskip}
-\usepackage{bm}
 
 \geometry{margin=2.5cm}
-
-\hypersetup{
-  colorlinks=true,
-  linkcolor=blue!60!black,
-  urlcolor=blue!60!black
-}
-
-\theoremstyle{plain}
-\newtheorem{theorem}{Theorem}[section]
-\newtheorem{proposition}{Proposition}[section]
-\newtheorem{corollary}{Corollary}[section]
-\theoremstyle{definition}
-\newtheorem{definition}{Definition}[section]
-\newtheorem{remark}{Remark}[section]
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
 
 \newcommand{\IC}{\mathrm{IC}}
-\newcommand{\E}{\mathbb{E}}
-\newcommand{\Var}{\mathrm{Var}}
-\newcommand{\Cov}{\mathrm{Cov}}
-\newcommand{\Cor}{\mathrm{Cor}}
-\newcommand{\rank}{\mathrm{rank}}
 \newcommand{\DVOL}{\mathrm{DVOL}}
 \newcommand{\OI}{\mathrm{OI}}
 \newcommand{\VRP}{\mathrm{VRP}}
 \newcommand{\TAR}{\mathrm{TAR}}
 \newcommand{\bp}{\,\mathrm{bp}}
-\newcommand{\sign}{\mathrm{sign}}
 
-\title{\textbf{Phase 3 Signal Research --- BTCUSDT Perpetual Futures}\\[0.4em]
-\large Volatility Risk Premium, Taker Aggression, and OI-Price Divergence\\[0.3em]
-\large A Complete Treatment from First Principles}
+\title{\textbf{Phase 3 Signal Research --- BTCUSDT Perpetual Futures}\\[0.3em]
+\large Volatility Risk Premium, Taker Aggression, and OI-Price Divergence}
 \author{}
 \date{May 2026}
 
 \begin{document}
 \maketitle
-\tableofcontents
-\newpage
+
+\begin{abstract}
+We test three candidate daily-frequency signals against BTCUSDT perpetual
+futures returns using the same 7-stage validation pipeline applied in report
+A1. Signal P3 (OI-Price Divergence, DD regime) passes all validation gates:
+OOS Spearman IC $= +0.054$ ($p_\mathrm{boot} = 0.032$, $n=819$ days),
+position-level OOS Sharpe $+5.37$, and block-bootstrap $p = 0.007$ on
+57 exclusive trades where N3 was simultaneously inactive. Signal correlation
+with N3 is $+0.027$, establishing near-zero overlap. P3 is deployed to
+shadow paper trading. Signal P1 (Volatility Risk Premium) shows genuine IC
+at 48--72h but collapses when N3 activity is excluded (P1-exclusive Sharpe
+$= -0.50$), indicating P1 proxies N3's fear-regime driver rather than
+contributing independent information. Signal P2 (Taker Aggression Ratio) has
+no detectable daily-frequency signal. All results are conditional on the
+stated cost model and data; specific entry thresholds are withheld from this
+public version.
+\end{abstract}
 
 %% ============================================================
 \section{Introduction}
 %% ============================================================
 
-This document records Phase 3 of the BTCUSDT perpetual futures signal
-research programme.  It is a self-contained technical record of the
-design, derivation, testing, and position-level backtesting of three
-candidate signals.  The core results are:
-
-\begin{enumerate}
-  \item \textbf{P3 (OI-Price Divergence, DD regime) is a statistically
-        independent second candidate signal.}  The DD regime --- simultaneous
-        price decline and open-interest contraction --- predicts positive
-        24-hour returns with OOS Sharpe $+5.18$ on 57 exclusive trades
-        (trades where N3 was not simultaneously active), block-bootstrap
-        $p = 0.007$.  All results are conditional on the stated cost model
-        and data assumptions.  P3 is deployed to shadow paper trading.
-
-  \item \textbf{P1 (Volatility Risk Premium) is conditionally interesting
-        but not independent of N3.}  VRP$^z$ achieves statistically
-        significant IC at 48--72h ($p_{\mathrm{boot}} < 0.025$), but when
-        N3 is excluded from the DVOL $51$--$60$ zone, P1 Sharpe turns
-        negative ($-0.50$, $p = 0.732$).  P1 does not add independent alpha.
-
-  \item \textbf{P2 (Taker Aggression Ratio) is killed.}  IC is near zero
-        and unstable at all horizons.  The market is in approximate taker
-        equilibrium at daily frequency, leaving no directional information
-        in aggregate taker flow.
-\end{enumerate}
-
-Prior exploratory work (unreported) found that microstructure mean-reversion
-signals are below maker-cost breakeven after 2023.  Report A1 validated N3
-(Deribit 30-day DVOL $z$-score, DVOL $\geq \delta$ volatility-regime filter) with OOS
-Sharpe $+2.95$ over 863 days.  Phase 3 departs entirely from these earlier
-signal families.
-
-The report proceeds as follows. Section~\ref{sec:market} introduces
-the relevant market structures from first principles: open interest in
-perpetual futures, the volatility risk premium, and taker order flow.
-Section~\ref{sec:stats} summarises the statistical framework.
-Sections~\ref{sec:p1}--\ref{sec:p3} present each signal.
-Section~\ref{sec:p3deepdive} covers the P3 position-level backtest.
-Section~\ref{sec:p3independence} establishes P3's independence from N3.
-Section~\ref{sec:p1deepdive} is the P1 deep dive.
-Section~\ref{sec:du_short} covers the DU short-side research.
-Section~\ref{sec:summary} summarises and provides deployment details.
-Section~\ref{sec:conclusion} concludes.
+Report A1 validated signal N3 --- the 30-day DVOL z-score with a volatility
+regime filter --- achieving OOS Sharpe $+2.95$ over 863 days (2024--2026
+YTD). Phase 3 tests three structurally distinct signal families.
+\textbf{P1} hypothesises that implied volatility substantially exceeding
+recent realised volatility predicts positive returns via mean-reversion of the
+fear premium. \textbf{P2} tests whether aggressive buyer-initiated order flow
+at daily frequency predicts returns; the prior from market microstructure
+theory is negative, as informed flow aggregates away at this timescale.
+\textbf{P3} hypothesises that simultaneous price decline and OI contraction
+identifies long-liquidation exhaustion: forced sellers are bounded, and the
+supply vacuum after liquidation cascades clear produces a predictable
+mean-reversion impulse.
 
 %% ============================================================
-\section{Market Background}
-\label{sec:market}
+\section{Data and Methodology}
 %% ============================================================
 
-\subsection{Open Interest in Perpetual Futures}
-\label{sec:oi}
-
-\begin{definition}[Open Interest]
-  The \emph{open interest} (OI) of a derivative contract is the total
-  number of outstanding (open) contracts that have not yet been closed,
-  settled, or exercised.  Each contract represents one long position and
-  one short position.  OI is measured in units of contracts (or equivalently,
-  in BTC notional at the contract size).
-\end{definition}
-
-Unlike volume, which counts every transaction, OI counts only the
-\emph{currently live} positions. The key accounting identity is:
-
-\begin{equation}
-  \Delta\OI_t = N_t^{\text{open}} - N_t^{\text{close}}
-\end{equation}
-
-where $N_t^{\text{open}}$ is the number of new contracts created and
-$N_t^{\text{close}}$ is the number of contracts terminated in period $t$.
-
-Three types of transactions update OI differently:
-\begin{enumerate}
-  \item \textbf{New position} (neither party held the contract): one new
-        long and one new short are created. $\Delta\OI = +1$.
-  \item \textbf{Both sides closing} (both parties offsetting existing
-        positions): OI decreases by 1. $\Delta\OI = -1$.
-  \item \textbf{Transfer} (one side opens, one side closes): no net change
-        to OI. $\Delta\OI = 0$.
-\end{enumerate}
-
-\paragraph{Economic interpretation of OI changes.}
-The sign of $\Delta\OI$ in conjunction with the price direction carries
-information about the nature of the move:
-
-\begin{center}
-\begin{tabular}{ccp{9cm}}
-\toprule
-$\Delta P$ & $\Delta\OI$ & Economic interpretation \\
-\midrule
-$>0$ & $>0$ & Price rising, new longs entering. Capital-backed uptrend; existing shorts covering while new longs open. \\
-$>0$ & $<0$ & Price rising, positions closing. Short squeeze: shorts are forced to buy to close; fewer net participants remain after the move. \\
-$<0$ & $>0$ & Price falling, new positions opening. New shorts entering; conviction-driven downtrend. \\
-$<0$ & $<0$ & Price falling, positions closing. Long liquidations: longs are forced to sell, removing supply. After the flush, the pressure reverses. \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-This four-regime taxonomy is the foundation of Signal P3
-(Section~\ref{sec:p3}).
-
-\paragraph{Why OI matters for crypto perpetuals.}
-Crypto perpetuals are levered instruments. The maximum leverage on
-Binance BTCUSDT is $125\times$, though typical retail participants
-use $3$--$10\times$.  When a levered long position's margin falls below
-the maintenance requirement, the exchange's liquidation engine forcibly
-closes it: it sells the position to the market.
-
-A period of forced long liquidations ($\Delta P < 0$, $\Delta\OI < 0$)
-implies that:
-\begin{itemize}[noitemsep]
-  \item The sellers are not discretionary sellers making an informed bet
-        on future price direction; they are \emph{forced} sellers.
-  \item The supply of forced sellers is bounded: once all over-levered
-        longs are liquidated, forced selling stops.
-  \item After the liquidation cascade clears, the market faces a supply
-        vacuum: fewer longs remain (OI is lower), the funding rate
-        typically resets, and price can recover without resistance from
-        the eliminated over-leveraged positions.
-\end{itemize}
-
-\subsection{The Volatility Risk Premium}
-\label{sec:vrp_theory}
-
-\subsubsection{Risk-Neutral versus Physical Measures}
-
-Options are priced under the \emph{risk-neutral measure} $\mathbb{Q}$,
-not the physical (real-world) measure $\mathbb{P}$.  These measures
-coincide if and only if investors are risk-neutral with respect to the
-payoff in question.  For variance, they diverge substantially.
-
-Variance is a \emph{negatively skewed} risk: in bad economic times
-(market crashes, financial crises), realised volatility spikes.  An
-investor who holds assets that pay off \emph{badly} precisely when
-volatility is high will demand compensation for bearing this risk.
-In the language of asset pricing, negative covariance between an
-investor's marginal utility and the variance of the portfolio earns a
-positive risk premium.
-
-\begin{definition}[Variance Risk Premium]
-  The \emph{variance risk premium} (VRP) is the spread between the
-  risk-neutral expectation of future variance (implied by option prices)
-  and the physical expectation of future variance (the expected
-  realised variance):
-  \begin{equation}
-    \VRP_t = \E^{\mathbb{Q}}_t[\sigma^2_{t, t+T}]
-             - \E^{\mathbb{P}}_t[\sigma^2_{t, t+T}]
-    \label{eq:vrp_theoretical}
-  \end{equation}
-  Under standard regularity conditions (no-arbitrage, risk-aversion),
-  $\VRP_t > 0$: the implied variance exceeds the expected realised variance.
-\end{definition}
-
-\paragraph{Empirical implementation.}
-Equation~\eqref{eq:vrp_theoretical} involves latent objects
-($\E^{\mathbb{Q}}$ and $\E^{\mathbb{P}}$).  In practice:
-\begin{itemize}[noitemsep]
-  \item $\E^{\mathbb{Q}}_t[\sigma^2]$ is proxied by $\mathrm{DVOL}_t^2$
-        --- the Deribit model-free implied variance annualised (see A1 Section 2.2).
-  \item $\E^{\mathbb{P}}_t[\sigma^2]$ is proxied by the 30-day historical
-        realised variance, computed from 1-hour log returns.
-\end{itemize}
-
-Converting to annualised percentage units gives:
-\begin{equation}
-  \VRP_t = \DVOL_t - \sigma^{\mathrm{rv}}_t
-  \label{eq:vrp_empirical}
-\end{equation}
-where $\DVOL_t$ is in \% and $\sigma^{\mathrm{rv}}_t$ is the 30-day
-annualised realised volatility in \%.
-
-\subsubsection{Why VRP Predicts Future Returns}
-
-In equity markets, Bollerslev et al.\ (2009) show that VRP
-predicts excess returns: a high VRP means investors are collectively
-over-paying for variance protection, which tends to be corrected as
-uncertainty resolves and implied volatility mean-reverts.  The economic
-channel is:
-
-\begin{enumerate}
-  \item Fear is elevated: investors pay up for downside protection.
-        DVOL rises above realised vol.
-  \item The fear resolves (the triggering event passes, no crash occurs).
-  \item IV mean-reverts, option sellers collect the premium, and spot
-        prices recover as hedging demand fades.
-\end{enumerate}
-
-The sign of the predictive relationship is thus \emph{positive}: a high
-VRP predicts positive future returns.  This is the same mechanism as
-N3's fear-resolution channel (A1, Section 2.3), but VRP captures an
-additional dimension: not just whether fear is elevated relative to
-history ($z$-score), but whether it is elevated relative to the
-\emph{option market's own recent realised risk}.
-
-\subsection{Order Flow and Taker Aggression}
-\label{sec:taker_theory}
-
-\subsubsection{Makers, Takers, and the Limit Order Book}
-
-A \emph{limit order book} is the central mechanism for price discovery
-in exchange-traded markets.  Participants submit two types of orders:
-
-\begin{itemize}
-  \item \textbf{Limit orders (makers):} Orders specifying a price at
-        which the participant is willing to trade. They rest in the book
-        as \emph{passive} quotes. The participant earns the bid-ask
-        spread (approximately) and pays a lower exchange fee in exchange
-        for providing liquidity.
-
-  \item \textbf{Market orders / aggressive limit orders (takers):}
-        Orders that execute immediately against the best available
-        resting quote. The participant pays the spread and a higher fee
-        in exchange for certainty of execution.
-\end{itemize}
-
-The convention is that every trade has exactly one maker and one taker.
-\emph{Taker-buy} volume is the volume of contracts where the buyer was
-the aggressor (submitted a market buy or lifted the ask); taker-sell
-volume is analogously defined.
-
-\subsubsection{The Order Flow Imbalance Hypothesis}
-
-A high proportion of taker-buy volume signals that \emph{demand is
-aggressive}: buyers are sufficiently eager to pay the ask price rather
-than wait. The market microstructure hypothesis (Kyle, 1985; Glosten \& Milgrom, 1985)
-is that informed traders are more likely to be takers:
-they have time-sensitive information and cannot wait for passive fills.
-
-The \emph{order flow imbalance} (OFI) is:
-\begin{equation}
-  \mathrm{OFI}_t = \frac{V^{\text{taker-buy}}_t - V^{\text{taker-sell}}_t}
-                        {V^{\text{taker-buy}}_t + V^{\text{taker-sell}}_t}
-  \in [-1, +1]
-\end{equation}
-
-This equals $2\phi_t - 1$ where $\phi_t = V^{\text{buy}}_t / V_t$ is
-the taker-buy fraction.  Signal P2 uses $\phi_t$ directly (the TAR).
-
-At intraday frequencies (seconds to minutes), taker imbalance has been
-shown to predict short-term price impact in equity markets (Cont et al., 2014).  At the \emph{daily} frequency, the signal is expected
-to weaken substantially because:
-
-\begin{enumerate}
-  \item Informed taker flow occurs on timescales of seconds to minutes,
-        not hours; summing over a full day averages away any signal.
-  \item At the daily frequency, buy volume equals sell volume to within
-        small rounding errors by construction (every buy has a seller),
-        so $\phi_t \approx 0.50$ almost always.
-  \item Any residual imbalance reflects the \emph{mixture} of many
-        distinct informed and uninformed orders, which are mean-zero
-        in aggregate under market efficiency at long timescales.
-\end{enumerate}
-
-Phase 3 tests whether the daily TAR can nonetheless predict 24--72h
-ahead, despite this theoretical expectation.
+All signals are evaluated at daily frequency (non-overlapping 00:00 UTC
+samples) over 2023--2026-YTD using Binance FAPI 1m OHLCV, 5m open interest,
+8h funding rates, and Deribit BTCVOL 1h. Data splits, the Spearman IC
+criterion, breakeven IC derivation ($\IC^* \approx 0.035$ under 6 bp
+round-trip maker cost), overlapping-return adjustment, and block bootstrap
+(21-day blocks, $B=2{,}000$, one-sided) are documented in full in A1
+Sections 3--5. No signal parameters are fitted using OOS data. Train: 2023;
+OOS: 2024-H1 through 2026-YTD.
 
 %% ============================================================
-\section{Statistical Framework}
-\label{sec:stats}
+\section{Results}
 %% ============================================================
 
-This section derives the statistical tools used throughout Phase 3 from
-first principles.  The treatment is self-contained.
+\subsection{P1: Volatility Risk Premium}
 
-\subsection{Log-Returns as Prediction Targets}
+VRP is defined as $\DVOL_t - \sigma^{\mathrm{rv}}_t$ (30-day realised vol),
+z-scored over a 30-day rolling window. The signal is statistically
+significant at 48--72h in the full sample ($p_\mathrm{boot} < 0.025$, IC
+$= +0.075$--$+0.086$). However, it is strongly regime-conditional: IC
+$= +0.140$ in the DVOL $51$--$60$ band ($p_\mathrm{boot} < 0.0005$) but
+near zero outside it. The deep dive in Section~\ref{sec:p1indep} shows this
+conditional significance is entirely attributable to N3 co-firing days.
+\textbf{P1 is not promoted.}
 
-For a price series $\{C_t\}$, the \emph{simple return} over a horizon $h$ is
-$\tilde{r}_t^{(h)} = C_{t+h}/C_t - 1$.  The \emph{log-return} is:
-\[
-  r_t^{(h)} = \log\frac{C_{t+h}}{C_t} = \log C_{t+h} - \log C_t
-\]
-Log-returns are preferred for three reasons:
+\subsection{P2: Taker Aggression Ratio}
 
-\paragraph{Temporal additivity.}
-Log-returns over sub-periods add exactly: $r_{t,t+h+k} = r_{t,t+h} + r_{t+h,t+h+k}$.
-Simple returns compound multiplicatively, requiring chain multiplication.
-This additivity is essential for equity curve construction: the log-equity
-curve is the cumulative sum of log-returns.
+The daily taker-buy fraction $\TAR_t = V^{\mathrm{buy}}_t / V_t$ is near
+$0.50$ on almost every day ($\mu = 0.497$, $\sigma = 0.013$), confirming
+that informed order flow aggregates away at daily resolution. Across twelve
+signal-horizon combinations (TAR, TAR$^z$, $\Delta_5$TAR at 8h, 24h, 48h,
+72h), only one isolated result reaches $p < 0.05$ and does not survive any
+multiple-testing correction. \textbf{P2 is killed at the IC screen.}
 
-\paragraph{Symmetry.}
-A simple return of $+50\%$ is not cancelled by a subsequent $-50\%$:
-$1.5 \times 0.5 = 0.75 \neq 1$.  Log-returns are symmetric: $+\log 1.5$
-is exactly cancelled by $-\log 1.5$.  This symmetry makes long and short
-positions analytically equivalent, since a short log-return is $-r_t^{(h)}$.
+\subsection{P3: OI-Price Divergence (DD Regime)}
 
-\paragraph{Cost comparability.}
-Transaction costs are approximately constant fractions of notional regardless
-of direction.  A round-trip cost $c_{\text{RT}}$ is subtracted uniformly from
-$r_t^{(h)}$ regardless of its sign or magnitude.  This is exact in log-return
-space and approximate in simple return space.
-
-\paragraph{Basis-point convention.}
-All PnL, drawdown, and per-trade figures are stated in \emph{basis points}:
-$1\bp = 0.01\% = 10^{-4}$.  A log-return of $0.01$ (1\%) equals $100\bp$.
-
-The 24-hour total return including funding payments is:
-\begin{equation}
-  \pi_t^{(24h)} = \log\frac{C_{t+1440}}{C_t}
-                  - \sum_{k:\,\tau_k \in [t, t+1440]} F_{\tau_k}
-\end{equation}
-where $F_{\tau_k}$ is the 8-hour funding rate at settlement time $\tau_k$,
-and the sum covers the three settlements within the hold window.
-Round-trip maker cost: $c_{\mathrm{RT}} = 6\bp$ ($3\bp$ entry, $3\bp$ exit).
-
-\subsection{The Spearman Information Coefficient}
-\label{sec:IC}
-
-\begin{definition}[Spearman IC]
-  Let $\{(s_t, r_t)\}_{t=1}^n$ be a sample of signal-return pairs.
-  Define the rank functions:
-  \[
-    R_t = \rank(s_t) = \left|\{j : s_j \leq s_t\}\right|, \qquad
-    Q_t = \rank(r_t) = \left|\{j : r_j \leq r_t\}\right|
-  \]
-  (ranks from 1 to $n$; midranks for ties).  The Spearman IC is the Pearson
-  correlation applied to the rank vectors:
-  \begin{equation}
-    \IC(s, r) = \frac{\sum_{t=1}^n (R_t - \bar{R})(Q_t - \bar{Q})}
-                     {\sqrt{\sum_{t=1}^n (R_t - \bar{R})^2}
-                      \sqrt{\sum_{t=1}^n (Q_t - \bar{Q})^2}}
-    \label{eq:spearman}
-  \end{equation}
-  For continuous distributions with no ties, $\bar{R} = \bar{Q} = (n+1)/2$
-  and $\sum (R_t - \bar{R})^2 = n(n^2-1)/12$, giving the familiar formula:
-  \[
-    \IC(s, r) = 1 - \frac{6\sum_{t=1}^n d_t^2}{n(n^2 - 1)},
-    \qquad d_t = R_t - Q_t
-  \]
-\end{definition}
-
-\paragraph{Why Spearman over Pearson?}
-The Pearson correlation $\Cor(s, r)$ is the natural measure of
-\emph{linear} predictability.  However:
-\begin{enumerate}[noitemsep]
-  \item Log-return distributions are leptokurtic; a few large-return days
-        dominate the Pearson correlation.  A single outlier can flip the sign.
-  \item The relationship between a signal and $r_t^{(24h)}$ need not be
-        linear.  The Spearman IC is invariant to any monotone transformation
-        of either variable.
-  \item Trading strategies based on signal \emph{rank} (enter when the signal
-        is in the top quintile) are naturally assessed by rank correlation,
-        not level correlation.
-\end{enumerate}
-
-\begin{remark}
-  A negative IC is equally informative as a positive IC of the same
-  magnitude: the signal should simply be traded on the opposite side.
-  We report $|\IC|$ and the sign separately throughout.
-\end{remark}
-
-\subsection{The Breakeven Information Coefficient}
-\label{sec:ICstar}
-
-A statistically significant IC does not imply profitability.  The signal must
-generate sufficient expected gross profit to cover round-trip transaction costs.
-We now derive the minimum IC required.
-
-\begin{proposition}[Breakeven IC]
-  \label{prop:ICstar}
-  Consider a trading strategy that enters long when a standardised signal
-  $z_t \sim \mathcal{N}(0,1)$ is positive and short when $z_t$ is negative,
-  exiting after $h$ bars.  Under the linear-IC model
-  \begin{equation}
-    r_t^{(h)} = \IC \cdot \sigma_r \cdot z_t + \varepsilon_t, \qquad
-    \varepsilon_t \perp z_t,\quad
-    \Var(r_t^{(h)}) = \sigma_r^2
-    \label{eq:linearIC}
-  \end{equation}
-  the expected gross profit per trade equals
-  $\IC \cdot \sigma_r \cdot \sqrt{2/\pi}$.  The signal is profitable
-  against a round-trip cost $c_{\mathrm{RT}}$ if and only if
-  \begin{equation}
-    |\IC| > \IC^* \;\coloneqq\; \frac{c_{\mathrm{RT}}}{\sigma_r \sqrt{2/\pi}}
-    \label{eq:ICstar}
-  \end{equation}
-\end{proposition}
-
-\begin{proof}
-  Under model~\eqref{eq:linearIC}, since $z_t \perp \varepsilon_t$:
-  \[
-    \E[r_t^{(h)} \mid z_t] = \IC \cdot \sigma_r \cdot z_t
-  \]
-  For a long trade conditional on $z_t > 0$:
-  \begin{align*}
-    \E[r_t^{(h)} \mid z_t > 0]
-    &= \IC \cdot \sigma_r \cdot \E[z_t \mid z_t > 0]
-    = \IC \cdot \sigma_r \cdot \frac{\E[z_t \cdot \mathbf{1}_{z_t > 0}]}
-                                     {P(z_t > 0)}
-  \end{align*}
-  For $z_t \sim \mathcal{N}(0,1)$:
-  \[
-    \E[z_t \mid z_t > 0]
-    = \frac{\int_0^\infty z\,\phi(z)\,\mathrm{d}z}{\tfrac{1}{2}}
-    = 2\int_0^\infty z\,\phi(z)\,\mathrm{d}z
-    = 2\left[-\phi(z)\right]_0^\infty
-    = 2\phi(0)
-    = \sqrt{\tfrac{2}{\pi}}
-  \]
-  By symmetry, a short trade ($z_t < 0$) earns $\E[-r_t^{(h)} \mid z_t < 0]
-  = \IC \cdot \sigma_r \cdot \sqrt{2/\pi}$ as well.
-
-  Expected net profit per trade equals gross minus round-trip cost:
-  \[
-    \E[\text{net profit}] = \IC \cdot \sigma_r \sqrt{2/\pi} - c_{\mathrm{RT}}
-  \]
-  Setting this to zero and solving for IC gives~\eqref{eq:ICstar}.\qed
-\end{proof}
-
-\begin{remark}[Threshold entry]
-  If the strategy only trades when $|z_t| > c$ for some $c > 0$, the expected
-  gross profit per trade is $\IC \cdot \sigma_r \cdot \E[z \mid z > c]$.  Since
-  $\E[z \mid z > c] = \phi(c)/[1-\Phi(c)] > \sqrt{2/\pi}$ for all $c > 0$,
-  the breakeven IC is \emph{lower} than~\eqref{eq:ICstar}.  The formula as
-  stated is conservative: it applies to the strategy that enters on every bar.
-\end{remark}
-
-\begin{remark}[Pearson vs.\ Spearman]
-  Proposition~\ref{prop:ICstar} is stated for the Pearson IC.  The Spearman
-  IC satisfies $\IC_S \approx (6/\pi)\arcsin(\IC_P / 2)$, so
-  $\IC_S \approx \IC_P$ for $|\IC| \ll 1$.  Since all empirical ICs in this
-  report are in $[-0.20, +0.20]$, the same $\IC^*$ formula is applied.
-\end{remark}
-
-For the parameters used throughout Phase 3:
-\begin{itemize}[noitemsep]
-  \item $c_{\mathrm{RT}} = 6\bp$ (maker: $3\bp$ entry, $3\bp$ exit).
-  \item $\sigma_r^{(24h)} \approx 2.135\%$ (empirical OOS volatility).
-  \item $\IC^*_{\mathrm{maker}} \approx 0.035$.
-\end{itemize}
-
-The IC/IC* ratio gives the ``multiple of breakeven'': a ratio of $3\times$
-means the signal generates three times the expected gross profit needed
-to cover costs.
-
-\subsection{The Overlapping-Return Inflation Problem}
-\label{sec:overlap}
-
-The 1-minute BTCUSDT dataset has $T \approx 527{,}040$ observations in the OOS
-2024 window.  If we compute $r_t^{(24\text{h})} = \log(C_{t+1440}/C_t)$
-for every $t$ and treat all pairs as independent, we overstate statistical
-significance severely.
-
-\paragraph{The autocorrelation structure of overlapping returns.}
-Under the assumption that 1-minute log-returns are i.i.d.\ with
-variance $\delta^2$, the 24h log-return decomposes as:
-\[
-  r_t^{(24\text{h})} = \sum_{j=0}^{1439} \Delta_j(t),
-  \qquad \Delta_j(t) = \log\frac{C_{t+j+1}}{C_{t+j}}
-\]
-Two adjacent observations share all but one minute of their window.
-More generally, for lag $k \leq 1440$:
-\begin{align*}
-  \Cov\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
-  &= \Cov\!\left(\sum_{j=0}^{1439}\Delta_j(t),\,
-                 \sum_{j=0}^{1439}\Delta_j(t+k)\right)
-   = (1440 - k)\,\delta^2
-\end{align*}
-since the two sums share exactly $1440 - k$ common terms (for $k < 1440$).
-The autocorrelation at lag $k$ is:
-\begin{equation}
-  \Cor\!\left(r_t^{(24\text{h})}, r_{t+k}^{(24\text{h})}\right)
-  = \frac{(1440 - k)\,\delta^2}{1440\,\delta^2}
-  = 1 - \frac{k}{1440}, \qquad 0 \leq k \leq 1440
-  \label{eq:overlap_autocor}
-\end{equation}
-This is a tent function that linearly decays from 1 at lag 0 to 0 at lag 1440.
-
-\paragraph{Effective sample size.}
-For a stationary series with autocorrelation function $\rho_k$, the effective
-sample size for variance estimation is approximately:
-\[
-  n_{\mathrm{eff}} \approx \frac{T}{1 + 2\sum_{k=1}^{\infty} \rho_k}
-\]
-Substituting~\eqref{eq:overlap_autocor}:
-\[
-  1 + 2\sum_{k=1}^{1440-1}\!\!\left(1 - \frac{k}{1440}\right)
-  = 1 + 2 \cdot \frac{1440 \cdot 1439}{2 \cdot 1440}
-  = 1 + 1439
-  = 1440
-\]
-Therefore:
-\begin{equation}
-  n_{\mathrm{eff}} \approx \frac{T}{1440} \approx 366
-  \label{eq:neff}
-\end{equation}
-The effective number of independent 24-hour return observations is
-approximately 366 per year --- one per day --- regardless of whether we
-compute the return at every 1-minute bar or sample once per day.
-
-\paragraph{Practical implication.}
-A $t$-statistic computed from the full $n = 527{,}040$ series is inflated
-by a factor of $\sqrt{1440} \approx 38$ relative to the correct statistic
-based on $n_{\mathrm{eff}} \approx 366$.  \textbf{Solution:} sample every
-$1{,}440$ bars ($n \approx 365$ non-overlapping daily observations per OOS
-year) and apply the block bootstrap.
-
-\subsection{The Block Bootstrap}
-\label{sec:bootstrap}
-
-The block bootstrap (Künsch, 1989; Liu \& Singh, 1992) provides valid inference
-for statistics of dependent time series without parametric assumptions about
-the dependence structure.
-
-\begin{definition}[Non-Overlapping Block Bootstrap]
-  Given a time series $(X_1, \ldots, X_n)$ and a statistic $T_n$:
-  \begin{enumerate}
-    \item Choose block length $\ell$ and form $m = \lfloor n/\ell \rfloor$
-          non-overlapping blocks $B_j = (X_{(j-1)\ell+1}, \ldots, X_{j\ell})$
-          for $j = 1, \ldots, m$.
-    \item Draw $m$ blocks $B_{j_1}^*, \ldots, B_{j_m}^*$ uniformly at random
-          with replacement from $\{B_1, \ldots, B_m\}$.
-    \item Concatenate to form the bootstrap resample
-          $X^* = (B_{j_1}^*, \ldots, B_{j_m}^*)$; trim to length $n$.
-    \item Compute the bootstrap statistic $T_n^* = T_n(X^*)$.
-    \item Repeat $B$ times.  The empirical distribution of
-          $\{T_n^{*(b)}\}_{b=1}^B$ approximates the sampling distribution
-          of $T_n$.
-  \end{enumerate}
-\end{definition}
-
-For inference on $\IC$, the block bootstrap preserves temporal autocorrelation
-within blocks (capturing weekly seasonality, funding-cycle effects, and
-momentum effects) while permuting the dependence structure across blocks.
-
-\paragraph{Block length selection.}
-The block length $\ell$ should exceed the effective autocorrelation decay
-length of the signal-return interaction.  For the daily non-overlapping series
-used here, a block of $\ell = 21$ days (three calendar weeks) captures
-relevant dependence: weekly trading patterns, bi-weekly options gamma pinning
-cycles near expiry, and multi-week momentum effects.  (A1 used $\ell = 14$
-days; the longer block is adopted here to additionally capture multi-week
-momentum autocorrelation present in the OI and VRP signals tested in Phase 3.)
-
-\paragraph{$p$-value computation.}
-For a one-sided test of $H_0 : \IC = 0$ against $H_1 : \IC > 0$:
-\begin{equation}
-  p = \frac{1}{B}\sum_{b=1}^B \mathbf{1}\!\left[\IC^{*(b)} \geq \widehat{\IC}\right]
-  \label{eq:pvalue}
-\end{equation}
-where $B = 2{,}000$ resamples are used throughout (A1 used $B = 1{,}000$;
-the larger count reduces Monte Carlo noise in the null distribution tail).
-A small $p$ means the observed IC would rarely arise if the true predictive
-relationship were zero.  The one-sided form is used throughout Phase 3
-because the economic mechanism specifies the predicted sign of every signal
-in advance; A1 used a two-sided form as N3's positive sign was a finding
-to be verified rather than a prior assumption.
-
-\subsection{Walk-Forward Out-of-Sample Validation}
-\label{sec:walkforward}
-
-Standard cross-validation violates temporal causality: using future data to
-evaluate a model estimated on the past.  For time-series prediction, the
-correct protocol is \emph{walk-forward} validation:
-\begin{enumerate}[noitemsep]
-  \item Fix all signal parameters using only the training period
-        (2023-01-01 to 2023-12-31).
-  \item Evaluate the signal \emph{without any re-fitting} on disjoint
-        OOS windows.
-  \item Report IC and Sharpe separately for each OOS half-year to
-        assess temporal stability.
-\end{enumerate}
-
-All signals are evaluated on the following windows:
-
-\begin{center}
-\begin{tabular}{lll}
-\toprule
-Period & Dates & Role \\
-\midrule
-Train 2023   & 2023-01-01 to 2023-12-31 & In-sample \\
-OOS 2024-H1  & 2024-01-01 to 2024-06-30 & Out-of-sample \\
-OOS 2024-H2  & 2024-07-01 to 2024-12-31 & Out-of-sample \\
-OOS 2025-H1  & 2025-01-01 to 2025-06-30 & Out-of-sample \\
-OOS 2025-H2  & 2025-07-01 to 2025-12-31 & Out-of-sample \\
-OOS 2026-YTD & 2026-01-01 to 2026-05-13 & Out-of-sample \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-No signal parameters are fitted using OOS data.  All reported OOS
-statistics use the daily non-overlapping sample from the OOS window.
-
-%% ============================================================
-\section{P1: Volatility Risk Premium (VRP)}
-\label{sec:p1}
-%% ============================================================
-
-\subsection{Economic Mechanism}
-
-The theoretical basis for VRP as a return predictor follows from the
-risk-premium channel described in Section~\ref{sec:vrp_theory}: when
-implied volatility substantially exceeds realised volatility, investors
-have over-paid for uncertainty protection.  As the uncertainty resolves,
-implied volatility mean-reverts toward realised vol, options sellers
-collect the premium, and the spot price recovers as hedging demand fades.
-
-In Bitcoin specifically, the BTC variance risk premium is positive on
-average (DVOL exceeds realised vol by $4.8$ percentage points), consistent
-with the cross-asset VRP literature (Almeida et al., 2024).  The sign
-prediction for the IC is therefore \emph{positive}: a higher VRP should
-predict higher subsequent returns.
-
-\begin{remark}
-  This mechanism is related to N3's fear-resolution hypothesis but
-  distinct: N3 measures whether DVOL is above its \emph{own recent
-  history} ($z$-score channel), while VRP measures whether DVOL is
-  above the \emph{market's own recent realised vol} (risk-premium
-  channel).  A signal could be positive in one and zero in the other.
-\end{remark}
-
-\subsection{Signal Construction}
-
-\begin{definition}[30-Day Realised Volatility]
-  Let $p_\tau$ denote the 1-hour BTC close price.  The 30-day rolling
-  realised volatility is:
-  \begin{equation}
-    \sigma^{\mathrm{rv}}_t = 100\sqrt{365 \times 24} \times
-      \mathrm{std}\!\left(\{\log p_{\tau-k} - \log p_{\tau-k-1}\}_{k=1}^{720}\right)
-  \end{equation}
-  expressed in annualised percentage units, using the same frequency as
-  DVOL for direct comparability.
-\end{definition}
-
-\begin{definition}[Volatility Risk Premium]
-  \begin{align}
-    \VRP_t &= \DVOL_t - \sigma^{\mathrm{rv}}_t
-      \quad\text{(raw spread, \%pp)} \\
-    \VRP^z_t &= \frac{\VRP_t - \mu_{30}(\VRP)}{\sigma_{30}(\VRP)}
-      \quad\text{(30-day rolling $z$-score)} \\
-    \Delta\VRP_t &= \VRP_t - \VRP_{t-1}
-      \quad\text{(day-over-day change)}
-  \end{align}
-\end{definition}
-
-\subsection{Descriptive Statistics}
-
-\begin{center}
-\begin{tabular}{lrrr}
-\toprule
-Statistic & VRP (\%pp) & RV$_{30d}$ (\%) & DVOL (\%) \\
-\midrule
-Mean   &  4.84 & 45.75 & 50.70 \\
-Std    &  7.84 & 10.78 &  9.43 \\
-Min    & $-21.4$ & 22.4  & 32.2  \\
-Median &  5.20 & 45.1  & 51.1  \\
-Max    & 34.1  & 70.2  & 84.4  \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The VRP is positive on average (DVOL exceeds RV by 4.8 percentage
-points), consistent with the variance risk premium literature.  It is
-highly persistent: lag-1 autocorrelation of $+0.946$, decaying to
-$+0.20$ at 21 days.  This persistence reflects the slow mean-reversion
-of implied volatility towards realised vol.
-
-\subsection{IC Screening Results}
-
-\begin{center}
-\begin{tabular}{llrrrrr}
-\toprule
-Signal & Horizon & $n$ & IC & $p$-raw & $p$-boot & Sig. \\
-\midrule
-\multirow{4}{*}{$\VRP$}
-  & 8h  & 1198 & $-0.031$ & 0.284 & 0.862 & \\
-  & 24h & 1198 & $+0.045$ & 0.123 & 0.058 & $\dagger$ \\
-  & 48h & 1197 & $+0.051$ & 0.078 & 0.093 & $\dagger$ \\
-  & 72h & 1196 & $+0.046$ & 0.109 & 0.152 & \\
-\midrule
-\multirow{4}{*}{$\VRP^z$}
-  & 8h  & 1169 & $-0.026$ & 0.367 & 0.816 & \\
-  & 24h & 1169 & $+0.047$ & 0.109 & 0.035 & $*$ \\
-  & 48h & 1168 & $+0.075$ & 0.010 & 0.017 & $**$ \\
-  & 72h & 1167 & $+0.086$ & 0.003 & 0.023 & $**$ \\
-\midrule
-\multirow{4}{*}{$\Delta\VRP$}
-  & 8h  & 1197 & $+0.055$ & 0.057 & 0.038 & $**$ \\
-  & 24h & 1197 & $+0.020$ & 0.480 & 0.293 & \\
-  & 48h & 1196 & $+0.058$ & 0.045 & 0.048 & $**$ \\
-  & 72h & 1195 & $+0.077$ & 0.007 & 0.007 & $**$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\textit{Significance: $\dagger$ $p<0.10$; $*$ $p<0.05$; $**$ strictly
-$p<0.05$ with bootstrap confirming; all one-sided.}
-
-\medskip
-The sign of all significant ICs is \textbf{positive}: high VRP predicts
-positive future returns, consistent with the fear-resolution/variance-premium
-mechanism.  The $\VRP^z$ formulation is most informative at the 48--72h
-horizon (IC $= +0.075$ to $+0.086$, $p < 0.025$).  Note that the
-IC magnitudes ($\approx 0.05$--$0.09$) are 1.4--2.5$\times$ the maker
-breakeven $\IC^* = 0.035$, indicating marginal economic significance.
-
-\subsection{Quintile Analysis}
-
-\begin{center}
-\begin{tabular}{crrrl}
-\toprule
-Quintile & $n$ & Mean return (bp/day) & Sharpe (ann.) & $\VRP^z$ range \\
-\midrule
-Q1 (lowest) & 234 & $-0.1$ & $-0.01$ & Very low VRP \\
-Q2          & 234 & $-2.4$ & $-0.16$ & \\
-Q3          & 233 & $+17.8$ & $+1.35$ & \\
-Q4          & 234 & $+1.8$  & $+0.11$ & \\
-Q5 (highest)& 234 & $+36.3$ & $+2.21$ & Very high VRP \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Q5 (days when DVOL is substantially above realised vol) earns a mean
-of $+36\bp/\text{day}$ with an annualised Sharpe of $+2.21$.  Q1 and Q2
-(low VRP days) show flat to slightly negative returns.  The relationship
-is not uniformly monotone (Q4 is weak), suggesting the signal concentrates
-in the upper tail.
-
-\subsection{Critical Finding: DVOL Regime Interaction}
+The DD regime ($\Delta P < 0$, $\Delta\OI < 0$) identifies long-liquidation
+exhaustion. The four regimes are approximately uniformly distributed; the DD
+subset is not selected by unusual frequency. The IC screen confirms the
+signal's predictive content:
 
 \begin{center}
 \begin{tabular}{lrrrr}
 \toprule
-DVOL regime & $n$ & IC ($\VRP$ vs $r_{24h}$) & $p$-raw & $p$-boot \\
+Horizon & $n$ & IC & $p$-boot & Sig. \\
 \midrule
-DVOL $< 51$      & 598 & $-0.016$ & 0.692 & 0.669 \\
-DVOL $51$--$60$  & 448 & $+0.140$ & 0.003 & $<0.0005$ \\
-DVOL $\geq 60$   & 152 & $-0.092$ & 0.261 & 0.873 \\
+24h & 1183 & $+0.054$ & 0.032 & $*$ \\
+48h & 1183 & $+0.059$ & 0.023 & $*$ \\
+72h & 1183 & $+0.059$ & 0.019 & $*$ \\
+\midrule
+OOS confirmed & 819 & $+0.065$ & 0.026 & $*$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The VRP signal is regime-conditional in the same way as N3: no power
-outside the elevated-vol regime (DVOL $< 51$: IC $= -0.016$), strongly
-positive in the DVOL $51$--$60$ corridor (IC $= +0.140$, $p_{\mathrm{boot}}
-< 0.0005$), and reversing sign at DVOL $\geq 60$ (IC $= -0.092$, though
-not significant).
-
-This pattern is economically intuitive: when DVOL is very high ($\geq 60$),
-realised volatility is also elevated, so the VRP spread may be compressed
-or even negative on individual days.  The strongest fear-resolution
-premium occurs when implied vol is moderately elevated above its own
-recent history, not at extreme levels.
-
-\subsection{Sub-period Stability}
-
-\begin{center}
-\begin{tabular}{lrrr}
-\toprule
-Period & $n$ & IC ($\VRP$, 24h) & $p$-raw \\
-\midrule
-Train 2023   & 335 & $-0.000$ & 0.999 \\
-OOS 2024-H1  & 182 & $+0.038$ & 0.616 \\
-OOS 2024-H2  & 184 & $+0.058$ & 0.437 \\
-OOS 2025-H1  & 181 & $+0.081$ & 0.278 \\
-OOS 2025-H2  & 184 & $+0.080$ & 0.279 \\
-OOS 2026-YTD & 132 & $+0.057$ & 0.515 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Each half-year period lacks sufficient observations for individual
-significance.  The IC is positive and growing in all OOS periods,
-consistent with the aggregate OOS IC of $+0.057$ ($p_{\mathrm{boot}}
-= 0.035$) across 863 OOS days.  The flat IC in training (2023) suggests
-the signal strengthened in later periods.
-
-\subsection{P1 Verdict}
-
-\textbf{Survivor --- proceed to deep-dive validation.}  VRP$^z$ shows
-statistically significant positive IC at 48--72h ($p_{\mathrm{boot}} < 0.025$).
-The signal is economically grounded: when options price more vol than
-has recently been realised, subsequent returns tend to be positive via
-the fear-premium resolution mechanism.  The critical DVOL $51$--$60$
-interaction is a potential complementary domain to N3.
-
-%% ============================================================
-\section{P2: Taker Aggression Ratio (TAR)}
-\label{sec:p2}
-%% ============================================================
-
-\subsection{Economic Mechanism}
-
-Taker flow is the most direct observable of short-term order-flow
-imbalance: when buyers lift asks more aggressively than sellers hit bids,
-price pressure is upward.  At the daily frequency, elevated taker buy
-fraction could reflect either (a) informed buying that continues
-(momentum) or (b) retail over-reach that reverts (contrarian).
-
-Section~\ref{sec:taker_theory} explained why this mechanism is
-theoretically expected to \emph{fail} at the daily frequency: informed
-taker flow occurs on second-to-minute timescales, and aggregating over
-a full trading day washes out the signal.  Phase 3 empirically tests
-this expectation.
-
-\subsection{Signal Construction}
-
-\begin{definition}[Taker Aggression Ratio]
-  \begin{equation}
-    \TAR_t = \frac{\sum_{i \in [t-1440, t]} v^{\mathrm{buy}}_i}
-                  {\sum_{i \in [t-1440, t]} v_i}
-  \end{equation}
-  where $v^{\mathrm{buy}}_i$ is the Binance 1-minute kline field
-  \texttt{taker\_buy\_base\_volume} and $v_i$ is total volume.
-  The signed order flow imbalance is $\mathrm{OFI}_t = 2\TAR_t - 1$.
-  The z-scored variant $\TAR^z_t = (\TAR_t - \mu_{30}) / \sigma_{30}$
-  and 5-day momentum $\Delta_5\TAR$ are also tested.
-\end{definition}
-
-\subsection{Descriptive Statistics}
-
-\begin{center}
-\begin{tabular}{lrr}
-\toprule
-Statistic & TAR & TAR$^z$ \\
-\midrule
-Mean   & 0.4973 & $+0.006$ \\
-Std    & 0.0133 &  0.995  \\
-Min    & 0.452  & $-2.63$ \\
-Median & 0.497  & $-0.02$ \\
-Max    & 0.555  & $+3.07$ \\
-\midrule
-Autocorr lag 1  & $+0.154$ & $+0.122$ \\
-Autocorr lag 5  & $+0.020$ & $-0.020$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The TAR is almost exactly 0.50 on average, with a standard deviation of
-only 0.013.  This confirms the theoretical expectation: at the daily
-frequency, buy-initiated and sell-initiated volumes are closely matched
-on almost every day.  The near-zero autocorrelation at lag 5 indicates
-the signal is essentially memoryless at the weekly frequency.
-
-\subsection{IC Screening Results}
-
-\begin{center}
-\begin{tabular}{llrrrr}
-\toprule
-Signal & Horizon & $n$ & IC & $p$-boot & Sig. \\
-\midrule
-\multirow{4}{*}{TAR}
-  & 8h  & 1227 & $-0.026$ & 0.849 & \\
-  & 24h & 1227 & $+0.033$ & 0.153 & \\
-  & 48h & 1226 & $+0.032$ & 0.207 & \\
-  & 72h & 1225 & $+0.059$ & 0.031 & $*$ \\
-\midrule
-\multirow{4}{*}{TAR$^z$}
-  & 8h  & 1198 & $-0.035$ & 0.893 & \\
-  & 24h & 1198 & $+0.013$ & 0.304 & \\
-  & 48h & 1197 & $+0.006$ & 0.407 & \\
-  & 72h & 1196 & $+0.030$ & 0.131 & \\
-\midrule
-\multirow{4}{*}{$\Delta_5$TAR}
-  & 8h  & 1222 & $+0.001$ & 0.493 & \\
-  & 24h & 1222 & $+0.021$ & 0.240 & \\
-  & 48h & 1221 & $+0.000$ & 0.536 & \\
-  & 72h & 1220 & $+0.033$ & 0.135 & \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Only a single entry reaches $p < 0.05$: raw TAR at 72h, $p_{\mathrm{boot}}
-= 0.031$.  This is an isolated result across 12 tests --- under any
-multiple-testing correction it does not survive.  TAR$^z$ shows no
-significance at any horizon.
-
-\subsection{Quintile Analysis}
-
-\begin{center}
-\begin{tabular}{crrrl}
-\toprule
-Quintile & $n$ & Mean (bp/day) & Sharpe & Description \\
-\midrule
-Q1 & 240 & $-16.4$ & $-1.18$ & Very low TAR \\
-Q2 & 239 & $+32.9$ & $+2.08$ & Low TAR \\
-Q3 & 240 & $-4.2$  & $-0.24$ & Neutral \\
-Q4 & 239 & $+23.4$ & $+1.62$ & High TAR \\
-Q5 & 240 & $+17.0$ & $+1.10$ & Very high TAR \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-There is no monotone relationship between TAR and forward returns.
-Q2 (low TAR) outperforms Q5 (very high buyer aggression), and Q1
-(highest seller pressure) is the worst quintile.  The pattern is
-inconsistent with either a clean momentum or contrarian hypothesis.
-
-\subsection{Sub-period Stability}
-
-\begin{center}
-\begin{tabular}{lrrr}
-\toprule
-Period & $n$ & IC (TAR$^z$, 24h) & $p$-raw \\
-\midrule
-Train 2023   & 335 & $-0.036$ & 0.512 \\
-OOS 2024-H1  & 182 & $-0.066$ & 0.374 \\
-OOS 2024-H2  & 184 & $+0.093$ & 0.209 \\
-OOS 2025-H1  & 181 & $+0.044$ & 0.558 \\
-OOS 2025-H2  & 184 & $+0.117$ & 0.114 \\
-OOS 2026-YTD & 132 & $-0.051$ & 0.561 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The IC flips sign across periods with no directional consistency,
-characteristic of noise.
-
-\subsection{P2 Verdict}
-
-\textbf{Killed at IC screen.}
-
-The Taker Aggression Ratio has no consistent directional signal for
-BTCUSDT daily returns.  The empirical finding directly confirms the
-theoretical expectation from Section~\ref{sec:taker_theory}: the
-near-constant value ($\approx 0.50$, $\sigma = 0.013$) implies the market
-is in approximate taker equilibrium at the daily frequency.  A taker-based
-signal may retain value at sub-hourly frequencies where the imbalance is
-less washed out.
-
-%% ============================================================
-\section{P3: OI-Price Divergence (OI-PD)}
-\label{sec:p3}
-%% ============================================================
-
-\subsection{Economic Mechanism}
-
-Section~\ref{sec:oi} established that the sign of $(\Delta P, \Delta\OI)$
-pairs distinguishes between fundamentally different market processes.  The
-key hypothesis tested here is that the \textbf{DD regime} (simultaneous
-price decline and OI contraction) represents long-position exhaustion,
-generating a predictable mean-reversion impulse:
-
-\begin{enumerate}
-  \item A downward price move triggers margin calls on levered longs.
-  \item Liquidation of longs reduces OI simultaneously with price.
-  \item Forced supply is bounded: once over-levered positions are
-        cleared, the selling pressure exhausts.
-  \item The market recoils upward as new buyers enter at depressed prices,
-        unimpeded by the now-liquidated competing longs.
-\end{enumerate}
-
-This is the \emph{exhaustion-bounce} mechanism, specific to the leveraged
-crypto perpetual market structure.  It contrasts with the DU regime
-($\Delta P < 0$, $\Delta\OI > 0$: price falls while new shorts enter),
-which may represent informed conviction and continuation.
-
-\begin{remark}
-  The key distinction between DD and DU is the \emph{identity of the
-  seller}.  In DD: the sellers are forced liquidators (not discretionary).
-  In DU: the sellers (new shorts) are making an active directional bet.
-  Forced sellers are not informative about future direction; discretionary
-  shorts may be.
-\end{remark}
-
-\subsection{Signal Construction}
-
-\begin{definition}[OI-Price Divergence Regime]
-  Let $\Delta P_t^{24h} = \log(C_t / C_{t-1440})$ and
-  $\Delta\OI_t^{24h} = (\OI_t - \OI_{t-1440}) / \OI_{t-1440}$.
-  The regime is:
-  \begin{equation}
-    R_t =
-    \begin{cases}
-      \mathrm{UU} & \Delta P > 0,\; \Delta\OI > 0 \\
-      \mathrm{UD} & \Delta P > 0,\; \Delta\OI \leq 0 \\
-      \mathrm{DU} & \Delta P \leq 0,\; \Delta\OI > 0 \\
-      \mathrm{DD} & \Delta P \leq 0,\; \Delta\OI \leq 0
-    \end{cases}
-  \end{equation}
-  A continuous signal assigns convergent regimes to $+1$ and
-  divergent to $-1$:
-  \begin{equation}
-    s^{\mathrm{OI-PD}}_t = \mathbf{1}[R_t \in \{\mathrm{UU}, \mathrm{DD}\}]
-                           - \mathbf{1}[R_t \in \{\mathrm{UD}, \mathrm{DU}\}]
-  \end{equation}
-\end{definition}
-
-OI data is sourced from the Binance FAPI \texttt{sumOpenInterest}
-at 5-minute resolution, interpolated to 1-minute for alignment with
-the klines dataset.
-
-\subsection{Descriptive Statistics}
-
-\begin{center}
-\begin{tabular}{lrr}
-\toprule
-Regime & Count & Frequency \\
-\midrule
-UU (price up, OI up)   & 332 & 28.1\% \\
-UD (price up, OI down) & 271 & 22.9\% \\
-DU (price down, OI up) & 268 & 22.7\% \\
-DD (price down, OI down) & 312 & 26.4\% \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Regimes are approximately uniformly distributed, ruling out any
-trivial selection bias in the DD subset.
-
-\subsection{Regime Return Analysis}
-
-\begin{center}
-\begin{tabular}{llrrrrr}
-\toprule
-Regime & Description & $n$ & Mean (bp) & Win\,\% & $t$-stat & $p$-val \\
-\midrule
-UU & Price up, OI up   & 332 & $+9.7$  & 50.9 & $+0.75$ & 0.453 \\
-UD & Price up, OI down & 271 & $+15.6$ & 45.8 & $+1.02$ & 0.309 \\
-DU & Price down, OI up & 268 & $-19.5$ & 50.4 & $-1.17$ & 0.241 \\
-DD & Price dn, OI down & 312 & $+37.2$ & 55.8 & $+2.76$ & \textbf{0.006} \\
-\midrule
-\multicolumn{7}{l}{\textit{One-way ANOVA across all four regimes: F $= 2.54$, $p = 0.055$}} \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The DD regime is the dominant finding: the next 24-hour return following
-a day of simultaneous price decline and OI contraction averages $+37.2\bp$
-with a win rate of 55.8\% and $t = 2.76$ ($p = 0.006$, two-sided
-t-test against zero).  The exhaustion-bounce pattern is present and
-statistically significant.
-
-The DU regime (new shorts entering on declining price) shows $-19.5\bp$
-mean, consistent with the continuation hypothesis (genuine new short
-conviction), but does not reach individual significance.
-
-\subsection{Continuous IC Results}
-
-\begin{center}
-\begin{tabular}{llrrrr}
-\toprule
-Signal & Horizon & $n$ & IC & $p$-boot & Sig. \\
-\midrule
-\multirow{4}{*}{$s^{\mathrm{OI-PD}}$}
-  & 8h  & 1183 & $+0.038$ & 0.071 & $\dagger$ \\
-  & 24h & 1183 & $+0.054$ & 0.032 & $*$ \\
-  & 48h & 1183 & $+0.059$ & 0.023 & $*$ \\
-  & 72h & 1183 & $+0.059$ & 0.019 & $*$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The continuous OI-PD signal achieves $p_{\mathrm{boot}} < 0.035$ at all
-horizons from 24h to 72h.  The IC of $+0.054$ is $1.54\times$ the maker
-breakeven ($\IC^* = 0.035$), indicating marginal but positive expected
-profitability.
-
-\subsection{Sub-period Stability}
-
-\begin{center}
-\begin{tabular}{lrrrrr}
-\toprule
-Period & UU (bp) & UD (bp) & DU (bp) & DD (bp) & $s^{\mathrm{OI-PD}}$ IC \\
-\midrule
-Train 2023   & $+50.0$ & $+12.1$ & $+17.1$ & $+24.1$ & $+0.033$ \\
-OOS 2024-H1  & $+13.3$ & $+42.1$ & $-79.9$ & $+84.2$ & $+0.115$ \\
-OOS 2024-H2  & $-0.8$  & $+22.8$ & $-9.5$  & $+67.9$ & $+0.081$ \\
-OOS 2025-H1  & $-25.2$ & $+34.7$ & $+7.5$  & $+22.4$ & $+0.024$ \\
-OOS 2025-H2  & $-16.2$ & $+0.7$  & $-49.6$ & $+20.6$ & $+0.024$ \\
-OOS 2026-YTD & $+5.7$  & $-34.7$ & $-70.9$ & $-15.6$ & $+0.043$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The DD regime return is positive in five of six periods (failing only
-in 2026-YTD: $-15.6\bp$, $n = 44$ observations).  The continuous IC
-is positive in all six periods.
-
-\subsection{Critical Finding: DVOL Regime Interaction}
-
-\begin{center}
-\begin{tabular}{lrrrr}
-\toprule
-DVOL regime & $n$ & IC ($s^{\mathrm{OI-PD}}$, 24h) & $p$-raw & $p$-boot \\
-\midrule
-DVOL $< 51$     & 569 & $+0.005$ & 0.897 & 0.400 \\
-DVOL $51$--$60$ & 451 & $+0.051$ & 0.277 & 0.161 \\
-DVOL $\geq 60$  & 163 & $+0.180$ & 0.022 & $\mathbf{<0.0005}$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The OI-PD signal concentrates in high-vol regimes.  At DVOL $\geq 60$,
-the IC reaches $+0.180$ with $p_{\mathrm{boot}} < 0.0005$.  This aligns
-with the exhaustion-bounce mechanism: liquidation cascades are most severe
-in high-fear environments, so the DD regime carries the strongest
-mean-reversion signal when DVOL is elevated.  Below DVOL $= 51$ there is
-essentially no signal.
-
-\subsection{P3 Verdict}
-
-\textbf{Survivor --- proceed to deep-dive validation.}  The OI-PD signal
-achieves statistically significant IC at 24--72h horizons ($p_{\mathrm{boot}}
-\approx 0.020$--$0.032$, confirmed OOS: IC $= +0.065$, $p_{\mathrm{boot}}
-= 0.026$ on 819 OOS days).  The dominant contribution comes from the DD
-regime (long-liquidation exhaustion-bounce, mean $+37.2\bp$, $t = 2.76$,
-$p = 0.006$).  The signal strengthens considerably at high DVOL
-(IC $= +0.18$, $p_{\mathrm{boot}} < 0.0005$ at DVOL $\geq 60$).
-
-%% ============================================================
-\section{P3 Deep Dive: Position-Level Backtest}
-\label{sec:p3deepdive}
-%% ============================================================
-
-Following the IC screen, a full position-level backtest was run on the
-DD regime.  The frozen rule is: \textbf{go long when the prior 24h saw
-simultaneous price decline and OI contraction, and DVOL meets the
-threshold filter.}  All results use maker cost ($6\bp$ round-trip),
-include funding, and apply no parameter tuning beyond the DVOL threshold
-and hold period.
-
-\subsection{DVOL Threshold $\times$ Hold Period Grid (OOS 2024+)}
-
-\begin{center}
-\begin{tabular}{rrrrrrrr}
-\toprule
-DVOL $\geq$ & Hold & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
-\midrule
-54 & 24h &  99 & $+5.37$ & $+9{,}510$  & $-972$   & 65.7 & $<0.001$ \\
-54 & 48h &  99 & $+6.07$ & $+12{,}383$ & $-1{,}442$ & 61.6 & $<0.001$ \\
-54 & 72h &  99 & $+4.04$ & $+11{,}125$ & $-2{,}589$ & 65.7 & 0.002   \\
-\midrule
-57 & 24h &  64 & $+5.89$ & $+7{,}231$  & $-972$   & 68.8 & $<0.001$ \\
-57 & 48h &  64 & $+8.48$ & $+11{,}350$ & $-998$   & 67.2 & $<0.001$ \\
-57 & 72h &  64 & $+6.30$ & $+11{,}690$ & $-1{,}367$ & 68.8 & $<0.001$ \\
-\midrule
-60 & 24h &  39 & $+6.54$ & $+5{,}042$  & $-587$   & 71.8 & $<0.001$ \\
-60 & 48h &  39 & $+9.02$ & $+7{,}514$  & $-998$   & 66.7 & $<0.001$ \\
-60 & 72h &  39 & $+5.58$ & $+6{,}960$  & $-1{,}367$ & 66.7 & $<0.001$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-All nine cells of the $3 \times 3$ grid show positive Sharpe and
-$p_{\mathrm{boot}} \leq 0.002$.  Win rates of 65--72\% are substantially
-above N3's 54.1\%.  The 48h hold dominates across all DVOL thresholds
-in raw Sharpe.
-
-\subsection{Period Breakdown (DVOL $\geq \delta$, 24h hold)}
+The position-level backtest (24h hold, maker cost, DVOL regime filter)
+shows consistent results across the full OOS period:
 
 \begin{center}
 \begin{tabular}{lrrrrrr}
 \toprule
-Period & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & Exp.\,\% \\
+Period & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
 \midrule
-Train 2023    & 34 & $+5.49$ & $+2{,}532$ & $-643$ & 58.8 &  9.3 \\
-OOS 2024-H1   & 34 & $+5.51$ & $+3{,}691$ & $-658$ & 67.6 & 18.7 \\
-OOS 2024-H2   & 35 & $+7.52$ & $+3{,}232$ & $-530$ & 68.6 & 19.0 \\
-OOS 2025-H1   & 19 & $+3.11$ & $+1{,}029$ & $-642$ & 68.4 & 10.5 \\
-OOS 2025-H2   & \multicolumn{6}{l}{\textit{$<$2 trades (DVOL structurally below $\delta$ in H2 2025 bull market)}} \\
-OOS 2026-YTD  & 10 & $+5.57$ & $+1{,}616$ & $-518$ & 50.0 &  7.5 \\
+Train 2023   & 34 & $+5.49$ & $+2{,}532$ & $-643$ & 58.8 & 0.006 \\
+OOS 2024-H1  & 34 & $+5.51$ & $+3{,}691$ & $-658$ & 67.6 & $<0.001$ \\
+OOS 2024-H2  & 35 & $+7.52$ & $+3{,}232$ & $-530$ & 68.6 & $<0.001$ \\
+OOS 2025-H1  & 19 & $+3.11$ & $+1{,}029$ & $-642$ & 68.4 & 0.295 \\
+OOS 2025-H2  & \multicolumn{6}{l}{\textit{$<$2 trades --- DVOL below $\delta$ throughout H2 2025 bull market}} \\
+OOS 2026-YTD & 10 & $+5.57$ & $+1{,}616$ & $-518$ & 50.0 & 0.397 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 Sharpe is positive in all five periods with sufficient trade count.
-The 2025-H2 gap is structural: DVOL averaged 41.6 that period
-(well below the $\delta$ threshold), a consequence of the bull market
-IV suppression documented in A1 Section 6.3.
+Removing the two most extreme return days or all known macro-event days
+changes the overall Sharpe by less than 0.6 (99 $\to$ 97 trades,
+Sharpe $+5.37 \to +4.83$), indicating the edge is distributed across the
+calendar rather than concentrated in tail events. The signal improves
+monotonically with DVOL: IC $= +0.005$ at DVOL $< 51$,
+$+0.051$ at $51$--$60$, and $+0.180$ at DVOL $\geq 60$
+($p_\mathrm{boot} < 0.0005$), consistent with liquidation cascades being
+most severe in high-fear environments.
 
-\subsection{Year-by-Year Performance}
+\subsection{P3 Independence from N3}
+\label{sec:p3indep}
 
-\begin{center}
-\begin{tabular}{lrrrrrr}
-\toprule
-Year & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
-\midrule
-2023 & 34 & $+5.49$ & $+2{,}532$ & $-643$   & 58.8 & 0.006 \\
-2024 & 69 & $+6.18$ & $+6{,}924$ & $-658$   & 68.1 & 0.001 \\
-2025 & 20 & $+2.85$ & $+970$     & $-642$   & 65.0 & 0.295 \\
-2026 & 10 & $+5.57$ & $+1{,}616$ & $-518$   & 50.0 & 0.397 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-2025 and 2026 carry weak statistical significance because $n$ is small
-(20 and 10 trades respectively), not because the signal failed.
-The 2025 Sharpe of $+2.85$ is positive on trades that did occur.
-
-\subsection{Event Dependence}
-
-\begin{center}
-\begin{tabular}{lrrrrrr}
-\toprule
-Subset & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
-\midrule
-All OOS trades          & 99 & $+5.37$ & $+9{,}510$ & $-972$ & 65.7 & $<0.001$ \\
-Ex top/bot 1\% $|r|$   & 97 & $+4.83$ & $+7{,}525$ & $-972$ & 64.9 & 0.001   \\
-Ex known events         & 98 & $+5.32$ & $+9{,}380$ & $-972$ & 65.3 & $<0.001$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Removing the two most extreme days and all eight known macro-event days
-leaves the Sharpe nearly unchanged.  The P3 edge is not concentrated in
-tail events or macro surprises --- it is distributed across the calendar.
-
-%% ============================================================
-\section{P3 Independence from N3}
-\label{sec:p3independence}
-%% ============================================================
-
-The central question is whether P3 is a genuine second alpha or merely
-N3 in different clothing.
-
-\subsection{Signal Overlap and Correlation}
-
-\begin{center}
-\begin{tabular}{lr}
-\toprule
-Metric & Value \\
-\midrule
-DD regime days (OOS 2024+)      & 226 \\
-N3 long-signal days (OOS 2024+) & 146 \\
-Both active simultaneously       &  42 \quad (18.6\% of DD days) \\
-DD only (N3 long not active)     & 184 \\
-N3 long-only (DD not active)     & 104 \\
-\midrule
-Spearman correlation ($\mathrm{is\_dd}$ vs $n3\_\mathrm{long}$) & $+0.027$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The signals fire on almost entirely different days.  Spearman correlation
-of $+0.027$ is statistically indistinguishable from zero.  The 42 shared
-days account for only 18.6\% of P3 triggers and 28.8\% of N3 long triggers.
-
-\subsection{Performance by Signal Combination (OOS 2024+, DVOL $\geq \delta$, 24h)}
+The independence question is whether P3 adds signal content beyond what N3
+already captures. Spearman correlation between the two binary signals is
+$+0.027$ (statistically indistinguishable from zero); they fire on almost
+entirely different days (only 42 of 226 DD days overlap with an N3 long
+signal). The key evidence is the performance on \emph{exclusive} P3 trades:
 
 \begin{center}
 \begin{tabular}{lrrrrrr}
 \toprule
 Strategy & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
 \midrule
-N3 long-only         & 146 & $+3.38$ & $+10{,}094$ & $-1{,}150$ & 54.1 & $<0.001$ \\
-P3 (DD) only         &  99 & $+5.37$ & $+9{,}510$  & $-972$     & 65.7 & $<0.001$ \\
-\textbf{P3 excl.\ N3 days} & \textbf{57} & $\mathbf{+5.18}$ & $+4{,}599$ & $-769$ & 68.4 & \textbf{0.007} \\
-P3 AND N3 (both)     &  42 & $+5.63$ & $+4{,}905$  & $-642$     & 61.9 & $<0.001$ \\
-P3 OR N3 (either)    & 203 & $+3.79$ & $+14{,}741$ & $-1{,}293$ & 58.1 & $<0.001$ \\
-\midrule
-P3 DD (DVOL $\geq 60$)       &  39 & $+6.54$ & $+5{,}042$ & $-587$ & 71.8 & $<0.001$ \\
-P3 excl.\ N3 (DVOL $\geq 60$) &  17 & $+1.95$ & $+471$     & $-530$ & 70.6 & 0.058   \\
+N3 long-only              & 146 & $+3.38$ & $+10{,}094$ & $-1{,}150$ & 54.1 & $<0.001$ \\
+P3 (DD) only              &  99 & $+5.37$ & $+9{,}510$  & $-972$     & 65.7 & $<0.001$ \\
+\textbf{P3 excl.\ N3}     & \textbf{57} & $\mathbf{+5.18}$ & $+4{,}599$ & $-769$ & 68.4 & \textbf{0.007} \\
+P3 OR N3                  & 203 & $+3.79$ & $+14{,}741$ & $-1{,}293$ & 58.1 & $<0.001$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The critical row is \textbf{P3 excl.\ N3 days}: Sharpe $+5.18$,
-$p_{\mathrm{boot}} = 0.007$ on 57 trades that fired on days when N3
-was completely inactive.  This is the primary statistical evidence that P3 carries
-independent signal content under the stated assumptions.
+On the 57 trades where N3 was completely inactive, P3 achieves Sharpe $+5.18$
+with $p_\mathrm{boot} = 0.007$. This is the primary statistical evidence that
+P3 carries independent signal content. The combined ``P3 OR N3'' strategy
+produces $+14{,}741\bp$ OOS cumulative PnL, the highest of any configuration,
+confirming complementarity rather than duplication.
 
-\subsection{Period Breakdown: P3-Exclusive Trades}
+\subsection{P1 Independence from N3}
+\label{sec:p1indep}
 
-\begin{center}
-\begin{tabular}{lrrrrr}
-\toprule
-Period & $n$ & Sharpe & PnL (bp) & Win\,\% & $p$-boot \\
-\midrule
-Train 2023    & 22 & $+3.38$ & $+1{,}095$ & 54.5 & $<0.001$ \\
-OOS 2024-H1   & 23 & $+4.42$ & $+1{,}852$ & 65.2 & 0.002   \\
-OOS 2024-H2   & 19 & $+10.92$ & $+2{,}273$ & 84.2 & 0.210  \\
-OOS 2025-H1   & 11 & $+4.20$ & $+544$     & 63.6 & $<0.001$ \\
-OOS 2025-H2   & \multicolumn{5}{l}{\textit{$<$2 trades (low DVOL period)}} \\
-OOS 2026-YTD  &  4 & $-0.62$ & $-70$      & 25.0 & --- \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Sharpe is positive in four of five periods with sufficient trades.
-
-\subsection{Independence Verdict}
-
-\textbf{P3 passes independence tests from N3 under stated assumptions.}
-
-Evidence:
-\begin{enumerate}
-  \item Signal correlation $= +0.027$ (virtually uncorrelated).
-  \item P3 fires on 184 days when N3 is not active (82\% of P3 trades).
-  \item P3-exclusive trades achieve Sharpe $+5.18$,
-        $p_{\mathrm{boot}} = 0.007$ on 57 OOS trades.
-  \item Period-by-period IC of P3-exclusive trades is positive in all
-        periods with sufficient data.
-  \item The combined ``P3 OR N3'' strategy generates $+14{,}741\bp$ OOS,
-        the highest absolute return of any configuration, confirming
-        complementarity rather than duplication.
-\end{enumerate}
+The critical test: when N3 is excluded from the DVOL $51$--$60$ band
+(the only region where P1 is significant), the VRP-exclusive Sharpe is
+$-0.50$ ($p_\mathrm{boot} = 0.732$, $n = 75$ trades). The VRP edge in
+this band is entirely driven by days where N3z is also elevated; both signals
+respond to the same fear-regime driver. Additionally, OOS 2025-H1 shows
+Sharpe $-0.41$ ($n = 23$) despite sufficient trade count, a period where
+P3 remained positive ($+3.11$). \textbf{P1 does not add independent
+information when N3 is inactive.}
 
 %% ============================================================
-\section{P1 Deep Dive: VRP Position-Level Backtest}
-\label{sec:p1deepdive}
+\section{Summary and Deployment}
 %% ============================================================
 
-\subsection{Threshold $\times$ Hold Period Grid (DVOL 51--60, OOS 2024+)}
-
 \begin{center}
-\begin{tabular}{rrrrrrrr}
-\toprule
-$\VRP^z >$ & Hold & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
-\midrule
-0.75 & 24h & 130 & $+1.43$ & $+3{,}461$  & $-1{,}806$ & 53.1 & 0.138 \\
-0.75 & 48h & 130 & $+2.48$ & $+7{,}295$  & $-4{,}105$ & 58.5 & 0.100 \\
-0.75 & 72h & 130 & $+3.33$ & $+12{,}333$ & $-4{,}881$ & 61.5 & 0.046 \\
-\midrule
-1.00 & 24h & 107 & $+2.23$ & $+4{,}675$  & $-1{,}692$ & 55.1 & 0.021 \\
-1.00 & 48h & 107 & $+3.65$ & $+8{,}803$  & $-2{,}057$ & 62.6 & 0.002 \\
-1.00 & 72h & 107 & $+4.78$ & $+14{,}514$ & $-2{,}463$ & 66.4 & $<0.001$ \\
-\midrule
-1.25 & 24h &  86 & $+2.56$ & $+3{,}500$  & $-1{,}217$ & 54.7 & 0.004 \\
-1.25 & 48h &  86 & $+2.70$ & $+4{,}782$  & $-2{,}184$ & 62.8 & 0.026 \\
-1.25 & 72h &  86 & $+3.99$ & $+8{,}797$  & $-2{,}414$ & 66.3 & 0.002 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The VRP signal shows consistent positive Sharpe across the full $3 \times 3$
-grid, with significance building at longer holding periods.  The 72h
-hold dominates: $\VRP^z > 1.00$, 72h achieves Sharpe $+4.78$ with
-$p < 0.001$.  MaxDD is larger than P3 ($-2{,}463\bp$ vs $-972\bp$),
-consistent with longer holding.
-
-\subsection{Period Breakdown ($\VRP^z > 0.75$, DVOL 51--60, 48h hold)}
-
-\begin{center}
-\begin{tabular}{lrrrrr}
-\toprule
-Period & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% \\
-\midrule
-Train 2023    & 39 & $+2.13$ & $+1{,}714$ & $-1{,}656$ & 59.0 \\
-OOS 2024-H1   & 32 & $+6.34$ & $+4{,}934$ & $-925$     & 59.4 \\
-OOS 2024-H2   & 48 & $+1.01$ & $+1{,}147$ & $-2{,}342$ & 58.3 \\
-OOS 2025-H1   & 23 & $-0.41$ & $-209$     & $-2{,}152$ & 52.2 \\
-OOS 2025-H2   &  4 & $+6.20$ & $+427$     & $0$        & 75.0 \\
-OOS 2026-YTD  & 23 & $+2.25$ & $+997$     & $-1{,}660$ & 60.9 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\textbf{Period instability is the primary concern.}  OOS 2025-H1 shows
-Sharpe $-0.41$ ($n = 23$).  By contrast, P3 was positive in 2025-H1
-(Sh $+3.11$).  The VRP signal in the DVOL $51$--$60$ zone is less stable
-than P3.
-
-\subsection{Independence from N3 (DVOL 51--60, 48h hold)}
-
-\begin{center}
-\begin{tabular}{lrrrrr}
-\toprule
-Strategy & $n$ & Sharpe & PnL (bp) & Win\,\% & $p$-boot \\
-\midrule
-N3 in DVOL 51--60         &  81 & $+3.70$ & $+7{,}903$ & 65.4 & 0.106 \\
-P1 all in DVOL 51--60     & 130 & $+2.48$ & $+7{,}295$ & 58.5 & 0.100 \\
-\textbf{P1 excl.\ N3}     & \textbf{75} & $-0.50$ & $-819$ & 52.0 & 0.732 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\textbf{The critical finding:} when N3 is not active in the DVOL $51$--$60$
-zone, the VRP signal has negative Sharpe ($-0.50$) with $p_{\mathrm{boot}}
-= 0.732$.  The VRP edge in the $51$--$60$ band is driven by the subset
-of days where N3$z$ is also elevated --- the two signals share the same
-fear-regime driver.  P1 does not carry independent information from N3.
-
-\subsection{P1 Revised Verdict}
-
-\textbf{P1 is not independent of N3 and is not promoted to shadow trading.}
-
-At the IC-screen stage, VRP$^z$ showed genuine statistical significance.
-The deep dive reveals two fatal problems: (1) when N3 is excluded from
-the DVOL $51$--$60$ universe, P1 Sharpe is negative, meaning P1 does not
-add independent alpha; and (2) OOS 2025-H1 is materially negative
-despite sufficient trade count.  P1 is conditionally interesting (the
-72h horizon results are genuine) but not ready for promotion.
-
-%% ============================================================
-\section{DU Short Side Research}
-\label{sec:du_short}
-%% ============================================================
-
-\subsection{Hypothesis and Test Design}
-
-The DU regime ($\Delta P < 0$, $\Delta\OI > 0$) represents conviction-driven
-downtrends: new short positions are entering while price falls.  The
-continuation hypothesis is that this fresh short capital accelerates the
-decline, creating a profitable short entry.
-
-DU and DD are mutually exclusive: they share $\Delta P < 0$ but differ
-on OI direction.  The test grid is: DVOL $\geq \{54, 57, 60\}$, hold
-$\{24\mathrm{h}, 48\mathrm{h}, 72\mathrm{h}\}$, SHORT only, maker cost.
-
-\subsection{IC Screen (OOS 2024+)}
-
-\begin{center}
-\begin{tabular}{rrrr}
-\toprule
-Hold & IC (short persp.) & $p$-raw & $p$-boot \\
-\midrule
-24h & $+0.071$ & 0.036 & 0.474 \\
-48h & $+0.055$ & 0.106 & 0.480 \\
-72h & $+0.026$ & 0.444 & 0.520 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The raw IC at 24h is $+0.071$ ($p$-raw $= 0.036$), which appears marginally
-significant.  After block bootstrap, $p_{\mathrm{boot}} = 0.474$ --- not
-significant.  The raw significance is driven by serial correlation, not
-by a genuine signal.
-
-\subsection{DVOL Threshold $\times$ Hold Period Grid}
-
-\begin{center}
-\begin{tabular}{rrrrrrrr}
-\toprule
-DVOL $\geq$ & Hold & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% & $p$-boot \\
-\midrule
-54 & 24h & 64 & $-0.44$ & $-635$   & $-3{,}758$ & 51.6 & 1.000 \\
-54 & 48h & 64 & $-1.36$ & $-2{,}197$ & $-5{,}046$ & 46.9 & 1.000 \\
-54 & 72h & 64 & $-4.11$ & $-7{,}307$ & $-8{,}905$ & 35.9 & 1.000 \\
-\midrule
-57 & 24h & 37 & $-0.36$ & $-356$   & $-3{,}714$ & 51.4 & 1.000 \\
-57 & 48h & 37 & $-2.41$ & $-2{,}603$ & $-5{,}746$ & 43.2 & 1.000 \\
-57 & 72h & 37 & $-5.09$ & $-5{,}522$ & $-7{,}237$ & 35.1 & 1.000 \\
-\midrule
-60 & 24h & 18 & $+0.40$ & $+206$   & $-1{,}338$ & 55.6 & --- \\
-60 & 48h & 18 & $-1.39$ & $-873$   & $-2{,}131$ & 50.0 & 1.000 \\
-60 & 72h & 18 & $-3.95$ & $-2{,}242$ & $-2{,}884$ & 44.4 & 1.000 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-All 8 testable cells are negative or statistically inert.  The 72h hold
-is severely negative across all DVOL thresholds.
-
-\subsection{Period Breakdown (DVOL $\geq \delta$, 24h hold)}
-
-\begin{center}
-\begin{tabular}{lrrrrr}
-\toprule
-Period & $n$ & Sharpe & PnL (bp) & MaxDD (bp) & Win\,\% \\
-\midrule
-Train 2023    & 24 & $-4.54$ & $-1{,}294$ & $-1{,}350$ & 37.5 \\
-OOS 2024-H1   & 17 & $+4.94$ & $+2{,}131$ & $-677$     & 58.8 \\
-OOS 2024-H2   & 29 & $-1.57$ & $-980$     & $-2{,}080$ & 44.8 \\
-OOS 2025-H1   &  8 & $-4.97$ & $-820$     & $-1{,}249$ & 62.5 \\
-OOS 2025-H2   &  2 & ---     & $-68$      & ---        & 50.0 \\
-OOS 2026-YTD  &  8 & $-5.31$ & $-897$     & $-1{,}389$ & 50.0 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Only OOS 2024-H1 shows positive Sharpe.  Five of six periods are negative.
-This is not sampling noise: the single positive half-year is surrounded
-by deeply negative periods.
-
-\subsection{DU Short Verdict}
-
-\textbf{Killed at the IC/backtest screen.}  Block-bootstrap $p = 0.474$;
-negative Sharpe in 8 of 9 grid cells; positive in only 1 of 6
-half-year periods.  Adding DU short to P3 reduces combined Sharpe from
-$+5.37$ to $+2.73$ ($-635\bp$ PnL drag).  The continuation hypothesis
-at DVOL $\geq \delta$ is not supported.
-
-%% ============================================================
-\section{Summary and Conclusions}
-\label{sec:summary}
-%% ============================================================
-
-\subsection{Phase 3 Screen Results}
-
-\begin{center}
-\begin{tabular}{lllrrl}
+\begin{tabular}{llrlrl}
 \toprule
 Signal & Screen IC & $p$-boot & Backtest Sh & Indep.\ from N3 & Decision \\
 \midrule
-P1 VRP  & $+0.075$ (48h) & 0.017 & $+3.65$ (48h) & No ($p=0.73$) & Conditional \\
-P2 TAR  & $+0.013$ (24h) & 0.304 & --- & --- & \textbf{Killed} \\
-P3 OI-PD & $+0.054$ (24h) & 0.032 & $+5.37$ (24h) & Yes ($p=0.007$) & \textbf{Survivor} \\
+P1 VRP   & $+0.075$ (48h) & 0.017 & $+3.65$ & No ($p=0.73$)   & Not promoted \\
+P2 TAR   & $+0.013$ (24h) & 0.304 & ---     & ---             & \textbf{Killed} \\
+P3 OI-PD & $+0.054$ (24h) & 0.032 & $+5.37$ & Yes ($p=0.007$) & \textbf{Deployed (shadow)} \\
 \midrule
-N3 (A1) & $+0.112$ (24h) & 0.039 & $+3.38$ (24h) & --- & Validated \\
+N3 (A1)  & $+0.112$ (24h) & 0.039 & $+3.38$ & ---             & Validated \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\subsection{Regime Map}
-
-\begin{center}
-\begin{tabular}{lll}
-\toprule
-DVOL zone & Active signal & Status \\
-\midrule
-$< 51$              & None (flat)                & Confirmed: all signals fail here \\
-$51$--$53$          & None (flat)                & P1 not independent in this range \\
-$\delta$--$59$      & N3 (primary) + P3          & N3 validated; P3 adds independent trades \\
-$\geq 60$           & N3 + P3 (both strongest)   & Both signals active; high-fear zone \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\subsection{P3 Shadow Deployment}
-\label{sec:p3shadow}
-
-P3 was promoted to the live paper trading system on 14 May 2026.
-The frozen shadow rule is:
-\begin{equation*}
+P3 was promoted to shadow paper trading on 14 May 2026 under the frozen rule:
+\[
   \Delta p_{24h} < 0 \;\wedge\; \Delta\OI_{24h} < 0 \;\wedge\; \DVOL \geq \delta
-  \quad\Longrightarrow\quad \text{LONG},\; 24\mathrm{h\;hold},\; \text{maker}
-\end{equation*}
-\noindent\textit{(Specific threshold value $\delta$ is withheld from this public version.)}
+  \quad\Longrightarrow\quad \text{LONG},\; 24\mathrm{h},\; \text{maker}
+\]
+\noindent\textit{(Threshold $\delta$ is withheld from this public version.)}
 
-\textbf{Registered variants:}
-\begin{center}
-\begin{tabular}{llrl}
-\toprule
-Strategy name & Status & DVOL threshold & Purpose \\
-\midrule
-\texttt{P3\_OIPD\_DD}     & Primary shadow & $\geq \delta$ & Forward validation \\
-\texttt{P3\_OIPD\_DD\_B} & Research shadow & $\geq \delta_B$ & Sensitivity variant \\
-\texttt{P3\_OIPD\_DD\_C} & Research shadow & $\geq \delta_C$ & Sensitivity variant \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\textbf{Forward evidence protocol:} At 3-month review ($\geq$ 14 Aug 2026):
-\begin{enumerate}[noitemsep]
-  \item If Sharpe $> 0$ on $\geq 15$ exclusive (P3-only) trades: promote P3.
-  \item If Sharpe $< 0$ on $\geq 20$ exclusive trades: reassess mechanism.
-\end{enumerate}
-
-The ``P3 excl.\ N3 days'' row in \texttt{GET /api/performance/by-strategy}
-is the single most important forward monitor.
+Forward review protocol ($\geq$ 14 Aug 2026): promote if Sharpe $> 0$ on
+$\geq$15 exclusive P3 trades; reassess if Sharpe $< 0$ on $\geq$20 exclusive
+trades. The ``P3 excl.\ N3'' row in the performance API is the primary monitor.
 
 %% ============================================================
 \section{Conclusion}
-\label{sec:conclusion}
 %% ============================================================
 
-Phase 3 tested three signal families against BTCUSDT perpetual futures
-daily returns.  The key results:
+P3 is a statistically independent second candidate signal from N3. The
+exhaustion-bounce mechanism --- forced long liquidations creating a supply
+vacuum --- produces robust OOS results with win rates of 65--72\% and
+positive Sharpe in four of five measurable OOS periods. Signal correlation
+with N3 of $+0.027$ and exclusive-trade $p = 0.007$ are the primary
+independence evidence. P1 fails the independence test despite genuine IC;
+P2 has no daily-frequency signal. The DU short-side hypothesis was also
+tested and killed (bootstrap $p = 0.474$; negative Sharpe in 8 of 9
+grid cells, 5 of 6 half-year periods negative).
 
-\begin{enumerate}
-  \item \textbf{Open interest is the key new information source.}  The
-        OI-Price Divergence signal (P3) identifies long-liquidation
-        exhaustion events via the DD regime ($\Delta P < 0$, $\Delta\OI < 0$).
-        This is economically grounded: forced sellers remove supply
-        and stop when all over-levered longs are cleared, leaving a
-        vacuum into which prices recover.
-
-  \item \textbf{P3 passes independence tests from N3.}  Signal
-        correlation is $+0.027$.  Exclusive P3 trades achieve OOS
-        Sharpe $+5.18$ ($p = 0.007$) on 57 trades that occur on days
-        N3 is completely inactive.  The combined ``N3 OR P3'' strategy
-        achieves $+14{,}741\bp$ OOS cumulative PnL ($+3.79$ Sharpe),
-        the highest of any configuration.  Note: $n = 57$ exclusive
-        trades is a small sample; forward confirmation is required
-        before treating this as a persistent edge.
-
-  \item \textbf{VRP (P1) is not independent.}  The IC screen shows
-        genuine significance at 48--72h, but the deep dive shows
-        the edge collapses when N3 is excluded: P1-exclusive Sharpe
-        in the DVOL $51$--$60$ zone is $-0.50$ ($p = 0.732$).  P1
-        is a proxy for N3, not an orthogonal signal.
-
-  \item \textbf{Taker flow (P2) has no daily-frequency edge.}  The
-        near-constant $\TAR \approx 0.50$ confirms that the market
-        is in taker equilibrium at the daily frequency.  Intraday
-        taker flow may have value but is outside the current
-        24h-hold framework.
-
-  \item \textbf{DU short is killed.}  The continuation hypothesis in
-        the high-DVOL regime is not supported: 8 of 9 grid cells are
-        negative and the period breakdown is 5 of 6 negative.
-\end{enumerate}
-
-P3 (DD regime, DVOL $\geq \delta$) is deployed to shadow paper trading.
-The 3-month forward review is due $\geq$ 14 August 2026.
+\textit{A conservative reading: P3's Sharpe of $+5.18$ rests on 57 exclusive
+trades. Crypto Sharpe figures are sensitive to the cost model and OOS window;
+these results should be treated as a strong candidate signal under the stated
+assumptions, not a confirmed persistent edge. The 3-month forward review will
+provide the first genuinely prospective evidence.}
 
 \vspace{0.5em}
-\noindent\textit{A conservative reading: P3's OOS Sharpe of $+5.18$ rests on
-57 exclusive trades --- a small sample by any standard.  Crypto Sharpe
-figures are sensitive to the assumed cost model, microstructure frictions,
-and the specific OOS window.  These results should be treated as a strong
-candidate signal under the stated assumptions, not a confirmed persistent
-edge.  The 3-month forward review will provide the first genuinely
-prospective evidence.}
-
-\vspace{1em}
-\noindent\textit{Data: Binance FAPI 1m klines (2023--2026); Binance FAPI
-5m open interest (2022--2026); Deribit BTCVOL 1h (2022--2026);
-Binance 8h funding rates (2022--2026).}
+\noindent\textit{Data: Binance FAPI 1m klines, 5m OI, 8h funding (2022--2026);
+Deribit BTCVOL 1h (2022--2026). Entry thresholds withheld from public version.}
 
 %% ============================================================
 \section*{References}
@@ -1656,22 +247,20 @@ Binance 8h funding rates (2022--2026).}
 \begingroup
 \setlength{\parindent}{-2em}
 \setlength{\leftskip}{2em}
-\setlength{\parskip}{6pt}
+\setlength{\parskip}{4pt}
 \small
 
-Almeida, C., Grith, M., Miftachov, R., \& Wang, Z. (2024). Risk premia in the Bitcoin market. \textit{arXiv preprint} arXiv:2410.15195. \url{https://arxiv.org/abs/2410.15195}
+Almeida, C., Grith, M., Miftachov, R., \& Wang, Z. (2024). Risk premia in the Bitcoin market. \textit{arXiv preprint} arXiv:2410.15195.
 
-Bollerslev, T., Tauchen, G., \& Zhou, H. (2009). Expected stock returns and variance risk premia. \textit{The Review of Financial Studies}, \textit{22}(11), 4463--4492. \url{https://doi.org/10.1093/rfs/hhp008}
+Bollerslev, T., Tauchen, G., \& Zhou, H. (2009). Expected stock returns and variance risk premia. \textit{The Review of Financial Studies}, \textit{22}(11), 4463--4492.
 
-Cont, R., Kukanov, A., \& Stoikov, S. (2014). The price impact of order book events. \textit{Journal of Financial Econometrics}, \textit{12}(1), 47--88. \url{https://doi.org/10.1093/jjfinec/nbt003}
+Cont, R., Kukanov, A., \& Stoikov, S. (2014). The price impact of order book events. \textit{Journal of Financial Econometrics}, \textit{12}(1), 47--88.
 
-Glosten, L. R., \& Milgrom, P. R. (1985). Bid, ask and transaction prices in a specialist market with heterogeneously informed traders. \textit{Journal of Financial Economics}, \textit{14}(1), 71--100. \url{https://doi.org/10.1016/0304-405X(85)90044-3}
+Glosten, L. R., \& Milgrom, P. R. (1985). Bid, ask and transaction prices in a specialist market with heterogeneously informed traders. \textit{Journal of Financial Economics}, \textit{14}(1), 71--100.
 
-Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. \textit{The Annals of Statistics}, \textit{17}(3), 1217--1241. \url{https://doi.org/10.1214/aos/1176347265}
+Künsch, H. R. (1989). The jackknife and the bootstrap for general stationary observations. \textit{The Annals of Statistics}, \textit{17}(3), 1217--1241.
 
-Liu, R. Y., \& Singh, K. (1992). Moving blocks jackknife and bootstrap capture weak convergence. In R. LePage \& L. Billard (Eds.), \textit{Exploring the Limits of Bootstrap} (pp. 225--248). Wiley.
-
-Kyle, A. S. (1985). Continuous auctions and insider trading. \textit{Econometrica}, \textit{53}(6), 1315--1335. \url{https://doi.org/10.2307/1913210}
+Kyle, A. S. (1985). Continuous auctions and insider trading. \textit{Econometrica}, \textit{53}(6), 1315--1335.
 
 \endgroup
 
