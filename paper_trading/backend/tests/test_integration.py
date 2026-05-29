@@ -15,10 +15,9 @@ Run:
   cd paper_trading/backend
   pytest tests/test_integration.py -v
 """
-import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch
+from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -40,11 +39,11 @@ def db_session(engine):
     db_module.engine = engine
     db_module.SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
-    from app.database import init_db, Base
+    from app.database import Base
     Base.metadata.create_all(bind=engine)
 
     # Seed a single EquityCurve row (init_db seeding uses SessionLocal)
-    from app.database import EquityCurve, BotConfig
+    from app.database import EquityCurve
     session = db_module.SessionLocal()
     session.add(EquityCurve(timestamp=datetime.now(timezone.utc), equity=10000.0))
     session.commit()
@@ -75,7 +74,7 @@ def _open(db, market="BTCUSDT", strategy="N3_DVOL_LONG", side="long", price=50_0
 # ── 1. open_trade creates Trade and EquityCurve row ──────────────────────────
 
 def test_open_trade_creates_row(db_session):
-    from app.database import Trade, EquityCurve
+    from app.database import EquityCurve, Trade
     before_count = db_session.query(Trade).count()
     equity_before = db_session.query(EquityCurve).count()
 
@@ -94,7 +93,7 @@ def test_open_trade_creates_row(db_session):
 
 def test_check_can_trade_blocks_duplicate(db_session):
     from app.trading.paper_broker import count_open_trades
-    from app.trading.risk import check_can_trade, RiskCheckFailed
+    from app.trading.risk import RiskCheckFailed, check_can_trade
 
     count = count_open_trades(db_session, "BTCUSDT", "N3_DVOL_LONG")
     with pytest.raises(RiskCheckFailed, match="Position limit"):
@@ -104,8 +103,8 @@ def test_check_can_trade_blocks_duplicate(db_session):
 # ── 3. check_portfolio_risk blocks when cap is exceeded ──────────────────────
 
 def test_portfolio_risk_blocks_at_cap(db_session):
-    from app.trading.portfolio_risk import check_portfolio_risk, PortfolioRiskBlocked
     from app.config import PORTFOLIO_MAX_OPEN_POSITIONS
+    from app.trading.portfolio_risk import PortfolioRiskBlocked, check_portfolio_risk
 
     # Open trades until cap is hit
     for i in range(PORTFOLIO_MAX_OPEN_POSITIONS):
@@ -119,7 +118,13 @@ def test_portfolio_risk_blocks_at_cap(db_session):
 # ── 4. Kill switch arm/disarm round-trip ─────────────────────────────────────
 
 def test_kill_switch_arm_disarm(db_session):
-    from app.trading.kill_switch import arm, disarm, check_kill_switch, KillSwitchActive, invalidate_cache
+    from app.trading.kill_switch import (
+        KillSwitchActive,
+        arm,
+        check_kill_switch,
+        disarm,
+        invalidate_cache,
+    )
 
     invalidate_cache()
     arm(db_session, reason="integration test")
@@ -134,7 +139,7 @@ def test_kill_switch_arm_disarm(db_session):
 # ── 5. close_trade updates fields and appends equity row ─────────────────────
 
 def test_close_trade_full_cycle(db_session):
-    from app.database import Trade, EquityCurve
+    from app.database import EquityCurve
     from app.trading.paper_broker import close_trade, open_trade
 
     trade = open_trade(
@@ -180,7 +185,7 @@ def test_close_trade_full_cycle(db_session):
 # ── 6. Long/short PnL sign correctness ───────────────────────────────────────
 
 def test_losing_short_pnl_is_negative(db_session):
-    from app.trading.paper_broker import open_trade, close_trade
+    from app.trading.paper_broker import close_trade, open_trade
 
     trade = open_trade(
         db=db_session,
@@ -203,8 +208,8 @@ def test_losing_short_pnl_is_negative(db_session):
 # ── 7. calculate_pnl values round-trip ───────────────────────────────────────
 
 def test_pnl_fees_equal_round_trip_cost(db_session):
-    from app.trading.paper_broker import open_trade, close_trade
     from app.config import MAKER_RT_COST
+    from app.trading.paper_broker import close_trade, open_trade
 
     trade = open_trade(
         db=db_session,

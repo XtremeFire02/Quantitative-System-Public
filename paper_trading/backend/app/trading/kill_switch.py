@@ -16,9 +16,10 @@ Arm / disarm via API:
   GET  /api/risk/kill-switch          → current state
 """
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from app.database import SystemLog
 
+from sqlalchemy.orm import Session
+
+from app.database import SystemLog
 
 # ── Exception ─────────────────────────────────────────────────────────────────
 

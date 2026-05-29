@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, TradeRecord } from "../api";
+import { SkeletonTable } from "../components/Skeleton";
+import { toast } from "../components/Toast";
 
 const fmt = (v: number | null, dec = 2) =>
   v == null ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -11,17 +13,48 @@ function PnlCell({ bp }: { bp: number | null }) {
   return <span className={cls}>{bp > 0 ? "+" : ""}{fmt(bp, 1)} bp</span>;
 }
 
+function CloseButton({ trade, onClosed }: { trade: TradeRecord; onClosed: () => void }) {
+  const [closing, setClosing] = useState(false);
+
+  const handleClose = async () => {
+    if (!window.confirm(`Close trade #${trade.id} (${trade.market ?? "BTCUSDT"}) at market now?`)) return;
+    setClosing(true);
+    try {
+      const res = await api.closeTrade(trade.id);
+      toast.success(`Trade #${trade.id} closed — ${res.net_pnl_bp != null ? `${res.net_pnl_bp > 0 ? "+" : ""}${res.net_pnl_bp.toFixed(1)} bp` : "PnL pending"}`);
+      onClosed();
+    } catch (e: any) {
+      toast.error(`Failed to close trade #${trade.id}: ${e.message}`);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  return (
+    <button
+      className="btn btn-ghost"
+      style={{ fontSize: 9, padding: "0 6px", height: 20, color: "#ff3333", borderColor: "#3a1a1a" }}
+      onClick={handleClose}
+      disabled={closing}
+    >
+      {closing ? "…" : "✕ Close"}
+    </button>
+  );
+}
+
 export default function Trades() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [filter, setFilter] = useState<"all" | "open" | "closed">("all");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true);
     api.trades(filter === "all" ? undefined : filter)
       .then(setTrades)
       .finally(() => setLoading(false));
-  }, [filter]);
+  };
+
+  useEffect(() => { reload(); }, [filter]);
 
   const closed = trades.filter(t => t.status === "closed");
   const wins = closed.filter(t => (t.net_pnl ?? 0) > 0).length;
@@ -63,9 +96,9 @@ export default function Trades() {
       </div>
 
       {loading ? (
-        <div className="loading">Loading…</div>
+        <SkeletonTable rows={6} cols={9} />
       ) : trades.length === 0 ? (
-        <div className="card" style={{ color: "#64748b", textAlign: "center", padding: 40 }}>
+        <div className="card" style={{ color: "#555555", textAlign: "center", padding: 40 }}>
           No trades yet.
         </div>
       ) : (
@@ -85,6 +118,7 @@ export default function Trades() {
                 <th>Funding</th>
                 <th>Fees</th>
                 <th>Net PnL</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -97,17 +131,22 @@ export default function Trades() {
                     </span>
                   </td>
                   <td style={{ fontSize: 12 }}>{new Date(t.entry_timestamp).toLocaleDateString()}</td>
-                  <td style={{ fontSize: 12, color: "#64748b" }}>
+                  <td style={{ fontSize: 12, color: "#555555" }}>
                     {t.exit_timestamp ? new Date(t.exit_timestamp).toLocaleDateString() : "—"}
                   </td>
                   <td>${fmt(t.entry_price, 0)}</td>
-                  <td style={{ color: "#64748b" }}>{t.exit_price ? `$${fmt(t.exit_price, 0)}` : "—"}</td>
+                  <td style={{ color: "#555555" }}>{t.exit_price ? `$${fmt(t.exit_price, 0)}` : "—"}</td>
                   <td>{fmt(t.entry_dvol, 1)}</td>
                   <td style={{ fontWeight: 600 }}>{fmt(t.entry_n3_z, 3)}</td>
                   <td><PnlCell bp={t.gross_price_return_bp} /></td>
                   <td><PnlCell bp={t.funding_pnl_bp} /></td>
-                  <td style={{ color: "#f87171" }}>{t.fees_bp != null ? `-${fmt(t.fees_bp, 1)} bp` : "—"}</td>
+                  <td style={{ color: "#ff3333" }}>{t.fees_bp != null ? `-${fmt(t.fees_bp, 1)} bp` : "—"}</td>
                   <td style={{ fontWeight: 700 }}><PnlCell bp={t.net_pnl_bp} /></td>
+                  <td>
+                    {t.status === "open" && (
+                      <CloseButton trade={t} onClosed={reload} />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

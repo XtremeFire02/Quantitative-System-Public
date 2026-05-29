@@ -1,13 +1,21 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
 body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Arial', 'Helvetica Neue', Helvetica, sans-serif;
+  background: #000000;
+  color: #cccccc;
+  font-size: 12px;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent layout shift from scrollbar appearing/disappearing */
+  overflow-y: scroll;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
+/* Remove default focus ring — replaced by :focus-visible in App.css */
+:focus { outline: none; }
+
+code { font-family: 'Courier New', Courier, monospace; }
+
+/* Prevent images from overflowing their containers */
+img, svg { max-width: 100%; display: block; }

@@ -8,12 +8,14 @@ GET  /api/strategies              — all strategies with current status
 GET  /api/strategies/{name}       — single strategy detail
 POST /api/strategies/{name}/status — promote / change status
 """
-import json
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.database import get_db, StrategyStatus, Trade, Signal
+
+from app.database import Signal, StrategyStatus, Trade, get_db
+from app.middleware.auth import require_api_key
 
 router = APIRouter()
 
@@ -57,7 +59,7 @@ def get_strategy(name: str, db: Session = Depends(get_db)):
     return _serialize(row, db)
 
 
-@router.post("/strategies/{name}/status")
+@router.post("/strategies/{name}/status", dependencies=[Depends(require_api_key)])
 def update_status(name: str, body: StatusUpdate, db: Session = Depends(get_db)):
     if body.status not in VALID_STATUSES:
         raise HTTPException(400, f"Invalid status '{body.status}'. Valid: {sorted(VALID_STATUSES)}")

@@ -6,14 +6,15 @@ GET /api/risk/limits — the configured hard limits
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.trading.portfolio_risk import get_portfolio_state
+
 from app.config import (
+    PORTFOLIO_MAX_DAILY_LOSS_BP,
     PORTFOLIO_MAX_OPEN_POSITIONS,
     PORTFOLIO_MAX_SAME_MARKET,
-    PORTFOLIO_MAX_DAILY_LOSS_BP,
     PORTFOLIO_MAX_STRATEGY_DD_PCT,
 )
+from app.database import get_db
+from app.trading.portfolio_risk import get_portfolio_state
 
 router = APIRouter()
 

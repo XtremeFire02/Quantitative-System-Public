@@ -1,7 +1,9 @@
+from datetime import timezone
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from datetime import timezone
-from app.database import get_db, Signal
+
+from app.database import Signal, get_db
 
 router = APIRouter()
 

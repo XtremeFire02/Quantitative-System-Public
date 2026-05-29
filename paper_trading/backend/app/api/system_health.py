@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone, timedelta
-from app.database import get_db, MarketData, Signal, Trade, SystemLog
-from app.config import DATA_STALE_MINUTES
+
+from app.config import DAILY_JOB_HOUR_UTC, DATA_STALE_MINUTES
+from app.database import MarketData, Signal, SystemLog, Trade, get_db
 
 router = APIRouter()
 
@@ -16,6 +18,8 @@ def get_system_health(db: Session = Depends(get_db)):
     last_signal = db.query(Signal).order_by(Signal.id.desc()).first()
     open_trade = db.query(Trade).filter(Trade.status == "open").first()
     open_count = db.query(Trade).filter(Trade.status == "open").count()
+    closed_count = db.query(Trade).filter(Trade.status == "closed").count()
+    total_trades = closed_count + open_count
 
     def _ts(row):
         if row is None:
@@ -36,6 +40,24 @@ def get_system_health(db: Session = Depends(get_db)):
     market_stale = _stale(last_market)
     signal_stale = _stale(last_signal)
 
+    # Last successful daily signal job run (INFO log from daily_signal_job)
+    last_job_log = (
+        db.query(SystemLog)
+        .filter(SystemLog.component == "daily_signal_job", SystemLog.level == "INFO")
+        .order_by(SystemLog.id.desc())
+        .first()
+    )
+    last_job_run = _ts(last_job_log) if last_job_log else None
+
+    # Last successful exit job run
+    last_exit_log = (
+        db.query(SystemLog)
+        .filter(SystemLog.component == "exit_job", SystemLog.level == "INFO")
+        .order_by(SystemLog.id.desc())
+        .first()
+    )
+    last_exit_run = _ts(last_exit_log) if last_exit_log else None
+
     # Next scheduled exit: planned_exit_timestamp of open trade (if any)
     next_scheduled_exit = None
     hours_to_exit = None
@@ -47,21 +69,35 @@ def get_system_health(db: Session = Depends(get_db)):
         delta = (planned - now).total_seconds() / 3600
         hours_to_exit = round(max(delta, 0), 1)
 
-    # Next daily signal job: next 00:00 UTC
-    next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if next_midnight <= now:
-        next_midnight = next_midnight + timedelta(days=1)
+    # Next daily signal job: next configured hour UTC
+    next_job = now.replace(hour=DAILY_JOB_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if next_job <= now:
+        next_job = next_job + timedelta(days=1)
 
+    # Error count in last 24h
+    error_cutoff = now - timedelta(hours=24)
+    recent_errors = (
+        db.query(SystemLog)
+        .filter(SystemLog.level == "ERROR", SystemLog.timestamp >= error_cutoff)
+        .count()
+    )
+
+    degraded = market_stale or signal_stale
     return {
-        "status": "degraded" if (market_stale or signal_stale) else "healthy",
+        "status": "degraded" if degraded else "healthy",
         "last_binance_update": _ts(last_market),
         "market_data_stale": market_stale,
         "last_signal_calculation": _ts(last_signal),
         "signal_data_stale": signal_stale,
         "open_position_count": open_count,
+        "closed_trade_count": closed_count,
+        "total_trade_count": total_trades,
         "next_scheduled_exit": next_scheduled_exit,
         "hours_to_exit": hours_to_exit,
-        "next_daily_job_utc": next_midnight.isoformat(),
+        "next_daily_job_utc": next_job.isoformat(),
+        "last_daily_job_run": last_job_run,
+        "last_exit_job_run": last_exit_run,
+        "recent_errors_24h": recent_errors,
         "stale_threshold_minutes": DATA_STALE_MINUTES,
         "database_status": "ok",
         "checked_at": now.isoformat(),

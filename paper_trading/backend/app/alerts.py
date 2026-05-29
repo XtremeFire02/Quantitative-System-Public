@@ -1,11 +1,14 @@
 """Alert system for paper trading — stores alerts in DB, optionally emails."""
-import os
 import json
-import smtplib
 import logging
+import os
+import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
+
+import httpx
 from sqlalchemy.orm import Session
+
 from app.database import Alert, SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,10 @@ _SMTP_PORT = int(os.getenv("ALERT_SMTP_PORT", "587"))
 _SMTP_USER = os.getenv("ALERT_SMTP_USER", "")
 _SMTP_PASS = os.getenv("ALERT_SMTP_PASS", "")
 _ALERT_TO   = os.getenv("ALERT_EMAIL_TO", "")
+
+# Optional Telegram config from environment variables
+_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+_TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
 def fire(
@@ -35,6 +42,7 @@ def fire(
     _store(category, title, body, db, strategy=strategy, market=market,
            exposure=exposure, action_taken=action_taken)
     _maybe_email(title, body)
+    _maybe_telegram(title, body)
 
 
 def fire_p3_signal(
@@ -110,7 +118,7 @@ def fire_risk_blocked(
 
 
 def fire_oi_stale(last_ts: datetime, db: Session | None = None) -> None:
-    age_min = (datetime.now(timezone.utc) - last_ts.replace(tzinfo=timezone.utc)).seconds // 60
+    age_min = int((datetime.now(timezone.utc) - last_ts.replace(tzinfo=timezone.utc)).total_seconds() // 60)
     title = "OI data stale"
     body = (
         f"Last OI timestamp: {last_ts.isoformat()}\n"
@@ -157,6 +165,22 @@ def _store(
     finally:
         if own_db:
             db.close()
+
+
+def _maybe_telegram(title: str, body: str) -> None:
+    if not _TELEGRAM_BOT_TOKEN or not _TELEGRAM_CHAT_ID:
+        return
+    try:
+        text = f"<b>[Paper Trading] {title}</b>\n\n{body}"
+        url = f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/sendMessage"
+        with httpx.Client(timeout=5.0) as client:
+            client.post(url, json={
+                "chat_id": _TELEGRAM_CHAT_ID,
+                "text": text,
+                "parse_mode": "HTML",
+            })
+    except Exception as exc:
+        logger.warning("Telegram alert failed (non-fatal): %s", exc)
 
 
 def _maybe_email(title: str, body: str) -> None:

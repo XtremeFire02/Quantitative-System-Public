@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import type { AvailableConfig, ActiveBotConfig } from "../api";
+import { toast } from "./Toast";
 
 // ── Gear icon (inline SVG, no external dep) ──────────────────────────────────
 function GearIcon({ size = 20 }: { size?: number }) {
@@ -21,38 +22,39 @@ function GearIcon({ size = 20 }: { size?: number }) {
   );
 }
 
-// ── Colours ───────────────────────────────────────────────────────────────────
+// ── Colours — Bloomberg dark theme ───────────────────────────────────────────
 const C = {
-  bg: "#0d0d17",
-  surface: "#111118",
-  border: "#1e1e2e",
-  text: "#e2e8f0",
-  muted: "#64748b",
-  accent: "#6366f1",
-  accentHover: "#818cf8",
-  danger: "#f87171",
-  dangerBg: "#7f1d1d",
-  green: "#4ade80",
-  tag: "#1e1e3a",
-  orange: "#fb923c",
-  orangeBg: "#431407",
+  bg:           "#000000",
+  surface:      "#111111",
+  border:       "#2a2a2a",
+  text:         "#e0e0e0",
+  muted:        "#666666",
+  accent:       "#ff6600",
+  accentHover:  "#cc5200",
+  danger:       "#ff3333",
+  dangerBg:     "#1a0000",
+  green:        "#00cc44",
+  tag:          "#1a0a00",
+  orange:       "#ff6600",
+  orangeBg:     "#1a0a00",
 };
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  validated:      { label: "validated",    color: "#4ade80", bg: "#14532d" },
-  experimental:   { label: "experimental", color: "#fb923c", bg: "#431407" },
-  shadow:         { label: "shadow",       color: "#a78bfa", bg: "#2e1065" },
-  execution_test: { label: "exec test",    color: "#38bdf8", bg: "#0c2540" },
-  coming_soon:    { label: "coming soon",  color: "#94a3b8", bg: "#1e293b" },
+  validated:      { label: "validated",    color: "#00cc44", bg: "#001a0d" },
+  experimental:   { label: "experimental", color: "#ff6600", bg: "#1a0a00" },
+  shadow:         { label: "shadow",       color: "#ffcc00", bg: "#1a1400" },
+  execution_test: { label: "exec test",    color: "#3399ff", bg: "#001433" },
+  coming_soon:    { label: "coming soon",  color: "#666666", bg: "#1a1a1a" },
 };
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_BADGE[status] ?? STATUS_BADGE.experimental;
   return (
     <span style={{
-      fontSize: 10, padding: "1px 6px", borderRadius: 4,
+      fontSize: 10, padding: "1px 6px",
       background: s.bg, color: s.color, fontWeight: 600,
+      border: `1px solid ${s.color}44`,
       letterSpacing: "0.03em",
     }}>
       {s.label}
@@ -64,8 +66,9 @@ function StatusBadge({ status }: { status: string }) {
 function Tag({ label }: { label: string }) {
   return (
     <span style={{
-      fontSize: 10, padding: "1px 6px", borderRadius: 4,
+      fontSize: 10, padding: "1px 6px",
       background: C.tag, color: C.accent, marginRight: 4,
+      border: `1px solid ${C.accent}44`,
     }}>
       {label}
     </span>
@@ -101,21 +104,32 @@ export default function BotConfigPanel() {
     setError(null);
     api.configAdd(selectedMarket, selectedStrategy)
       .then(() => {
+        toast.success(`Bot added: ${selectedStrategy} on ${selectedMarket}`);
         setSelectedMarket(null);
         setSelectedStrategy(null);
         refresh();
       })
-      .catch(e => setError(e?.message ?? "Failed to add bot"))
+      .catch(e => {
+        const msg = e?.message ?? "Failed to add bot";
+        setError(msg);
+        toast.error(msg);
+      })
       .finally(() => setLoading(false));
   };
 
   const handleRemove = (market: string, strategy: string) => {
     api.configRemove(market, strategy)
-      .then(refresh)
-      .catch(e => setError(e?.message ?? "Failed to remove bot"));
+      .then(() => {
+        toast.info(`Bot removed: ${strategy} on ${market}`);
+        refresh();
+      })
+      .catch(e => {
+        const msg = e?.message ?? "Failed to remove bot";
+        setError(msg);
+        toast.error(msg);
+      });
   };
 
-  // When market changes, clear strategy selection
   const handleMarketSelect = (m: string) => {
     setSelectedMarket(prev => prev === m ? null : m);
     setSelectedStrategy(null);
@@ -137,9 +151,8 @@ export default function BotConfigPanel() {
         title="Configure markets & bots"
         style={{
           background: open ? C.accent : "transparent",
-          border: `1px solid ${open ? C.accent : C.border}`,
-          borderRadius: 6,
-          color: open ? "white" : C.muted,
+          border: `1px solid ${open ? C.accent : "#444444"}`,
+          color: open ? "white" : "#999999",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -157,7 +170,7 @@ export default function BotConfigPanel() {
           onClick={() => setOpen(false)}
           style={{
             position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.45)",
+            background: "rgba(0,0,0,0.6)",
             zIndex: 999,
           }}
         />
@@ -171,12 +184,13 @@ export default function BotConfigPanel() {
         width: 360,
         height: "100vh",
         background: C.bg,
-        borderLeft: `1px solid ${C.border}`,
+        borderLeft: `2px solid ${C.border}`,
+        borderTop: `3px solid ${C.accent}`,
         zIndex: 1000,
         display: "flex",
         flexDirection: "column",
         transition: "right 0.25s cubic-bezier(0.4,0,0.2,1)",
-        boxShadow: open ? "-8px 0 32px rgba(0,0,0,0.5)" : "none",
+        boxShadow: open ? "-4px 0 24px rgba(255,102,0,0.08)" : "none",
       }}>
         {/* Header */}
         <div style={{
@@ -186,16 +200,16 @@ export default function BotConfigPanel() {
           flexShrink: 0,
         }}>
           <div>
-            <div style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>
+            <div style={{ color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "Arial", textTransform: "uppercase", letterSpacing: 1 }}>
               Markets &amp; Bots
             </div>
-            <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>
+            <div style={{ color: C.muted, fontSize: 11, marginTop: 2, fontFamily: "Courier New" }}>
               {active.length} active bot{active.length !== 1 ? "s" : ""}
             </div>
           </div>
           <button onClick={() => setOpen(false)} style={{
             background: "transparent", border: "none", color: C.muted,
-            cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px",
+            cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 6px",
           }}>✕</button>
         </div>
 
@@ -205,8 +219,9 @@ export default function BotConfigPanel() {
           {/* ── Active bots ── */}
           <div style={{ marginBottom: 24 }}>
             <div style={{
-              color: C.muted, fontSize: 11, fontWeight: 600,
-              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10,
+              color: C.muted, fontSize: 10, fontWeight: 700,
+              letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10,
+              fontFamily: "Arial",
             }}>
               Active Bots
             </div>
@@ -214,7 +229,7 @@ export default function BotConfigPanel() {
             {active.length === 0 ? (
               <div style={{
                 color: C.muted, fontSize: 13, textAlign: "center",
-                padding: "20px 0", borderRadius: 8, border: `1px dashed ${C.border}`,
+                padding: "20px 0", border: `1px dashed ${C.border}`,
               }}>
                 No active bots. Add one below.
               </div>
@@ -227,20 +242,16 @@ export default function BotConfigPanel() {
                     <div key={bot.id} style={{
                       background: C.surface,
                       border: `1px solid ${C.border}`,
-                      borderRadius: 8,
                       padding: "10px 12px",
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
                     }}>
-                      <span style={{
-                        fontSize: 18, width: 28, textAlign: "center",
-                        flexShrink: 0,
-                      }}>
+                      <span style={{ fontSize: 18, width: 28, textAlign: "center", flexShrink: 0 }}>
                         {mkt?.icon ?? "?"}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: C.text, fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ color: C.text, fontSize: 13, fontWeight: 600, fontFamily: "Courier New", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {strat?.display_name ?? bot.strategy_name}
                         </div>
                         <div style={{ color: C.muted, fontSize: 11, marginTop: 1 }}>
@@ -254,7 +265,6 @@ export default function BotConfigPanel() {
                           background: "transparent", border: "none",
                           color: C.muted, cursor: "pointer",
                           fontSize: 16, padding: "2px 4px", flexShrink: 0,
-                          borderRadius: 4,
                         }}
                         onMouseEnter={e => (e.currentTarget.style.color = C.danger)}
                         onMouseLeave={e => (e.currentTarget.style.color = C.muted)}
@@ -274,8 +284,9 @@ export default function BotConfigPanel() {
           {/* ── Add new bot ── */}
           <div>
             <div style={{
-              color: C.muted, fontSize: 11, fontWeight: 600,
-              letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12,
+              color: C.muted, fontSize: 10, fontWeight: 700,
+              letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12,
+              fontFamily: "Arial",
             }}>
               Add New Bot
             </div>
@@ -293,7 +304,6 @@ export default function BotConfigPanel() {
                     style={{
                       background: selectedMarket === key ? C.accent : C.surface,
                       border: `1px solid ${selectedMarket === key ? C.accent : C.border}`,
-                      borderRadius: 8,
                       color: selectedMarket === key ? "white" : C.text,
                       cursor: "pointer",
                       display: "flex",
@@ -308,7 +318,7 @@ export default function BotConfigPanel() {
                       {mkt.icon}
                     </span>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{mkt.display_name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "Courier New" }}>{mkt.display_name}</div>
                       <div style={{ fontSize: 11, opacity: 0.65, marginTop: 1 }}>{mkt.exchange}</div>
                     </div>
                   </button>
@@ -340,9 +350,8 @@ export default function BotConfigPanel() {
                         onClick={() => !disabled && setSelectedStrategy(prev => prev === key ? null : key)}
                         disabled={disabled}
                         style={{
-                          background: selected ? "#1e1e3a" : C.surface,
+                          background: selected ? C.orangeBg : C.surface,
                           border: `1px solid ${selected ? C.accent : C.border}`,
-                          borderRadius: 8,
                           color: disabled ? C.muted : C.text,
                           cursor: disabled ? "not-allowed" : "pointer",
                           padding: "10px 12px",
@@ -352,13 +361,14 @@ export default function BotConfigPanel() {
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{strat.display_name}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "Courier New" }}>{strat.display_name}</div>
                           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                             <StatusBadge status={strat.status} />
                             {alreadyActive && (
                               <span style={{
-                                fontSize: 10, padding: "1px 6px", borderRadius: 4,
-                                background: "#166534", color: C.green, fontWeight: 600,
+                                fontSize: 10, padding: "1px 6px",
+                                background: "#001a0d", color: C.green, fontWeight: 600,
+                                border: "1px solid #004422",
                               }}>active</span>
                             )}
                           </div>
@@ -381,7 +391,8 @@ export default function BotConfigPanel() {
             {error && (
               <div style={{
                 color: C.danger, fontSize: 12, background: C.dangerBg,
-                borderRadius: 6, padding: "8px 12px", marginBottom: 12,
+                border: `1px solid ${C.danger}`,
+                padding: "8px 12px", marginBottom: 12,
               }}>
                 {error}
               </div>
@@ -392,18 +403,8 @@ export default function BotConfigPanel() {
               <button
                 onClick={handleAdd}
                 disabled={loading}
-                style={{
-                  width: "100%",
-                  background: loading ? C.surface : C.accent,
-                  border: "none",
-                  borderRadius: 8,
-                  color: loading ? C.muted : "white",
-                  cursor: loading ? "not-allowed" : "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  padding: "10px",
-                  transition: "background 0.12s",
-                }}
+                className={`btn ${loading ? "btn-ghost" : "btn-primary"}`}
+                style={{ width: "100%", justifyContent: "center" }}
               >
                 {loading ? "Adding…" : "+ Add Bot"}
               </button>

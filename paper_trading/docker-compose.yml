@@ -1,39 +1,137 @@
 version: "3.9"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Environments
+#
+#   Development (SQLite, default):
+#     docker compose up --build
+#     Backend:  http://localhost:8000
+#     Frontend: http://localhost:80
+#
+#   Paper production (PostgreSQL):
+#     1. Copy .env.example → .env
+#     2. Set ENV=paper_prod, API_KEY, TELEGRAM_*, ALERT_* as needed
+#     3. Set DATABASE_URL=postgresql://pt_user:changeme@postgres:5432/paper_trading
+#        (or keep SQLite — both work; PostgreSQL is recommended for production)
+#     4. Comment out the backend "8000:8000" port mapping below
+#     docker compose --profile postgres up --build -d
+#
+#   Live trading (requires Binance API keys):
+#     Set LIVE_TRADING_ENABLED=true, BINANCE_API_KEY, BINANCE_API_SECRET in .env
+#
+#   Backup (run on demand or from a host cron):
+#     docker compose --profile backup run --rm backup
+#     Cron example (3 AM daily):
+#       0 3 * * * cd /path/to/paper_trading && docker compose --profile backup run --rm backup
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
+  # ── Optional PostgreSQL (--profile postgres) ───────────────────────────────
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    container_name: pt_postgres
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      - POSTGRES_USER=pt_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - POSTGRES_DB=paper_trading
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pt_user -d paper_trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     container_name: pt_backend
     restart: unless-stopped
+    networks:
+      - internal
     ports:
+      # Dev: expose API to host. Paper-prod: comment this out.
       - "8000:8000"
     volumes:
-      # Persist the SQLite database between restarts
-      - ./data:/app/data
+      - db_data:/app/data
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - DATABASE_URL=sqlite:////app/data/paper_trading.db
-      # Optional email alerts — set these in a local .env file
+      # SQLite by default; override with postgresql://... for production.
+      # When using --profile postgres use:
+      #   DATABASE_URL=postgresql://pt_user:changeme@postgres:5432/paper_trading
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/paper_trading.db}
+      - ENV=${ENV:-development}
+      # Auth — leave empty to disable in dev; required for paper_prod
+      # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+      - API_KEY=${API_KEY:-}
+      # Telegram push notifications (optional — set both to enable)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      # Email alerts (all four required to enable)
       - ALERT_SMTP_HOST=${ALERT_SMTP_HOST:-}
       - ALERT_SMTP_PORT=${ALERT_SMTP_PORT:-587}
       - ALERT_SMTP_USER=${ALERT_SMTP_USER:-}
       - ALERT_SMTP_PASS=${ALERT_SMTP_PASS:-}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
+      # Live trading (disabled by default — paper trading only)
+      - LIVE_TRADING_ENABLED=${LIVE_TRADING_ENABLED:-false}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+      # Scheduler / risk overrides (see config.py for defaults)
+      - DAILY_JOB_HOUR_UTC=${DAILY_JOB_HOUR_UTC:-0}
+      - EXIT_CHECK_INTERVAL_MINUTES=${EXIT_CHECK_INTERVAL_MINUTES:-15}
+      - DATA_STALE_MINUTES=${DATA_STALE_MINUTES:-120}
+      # Position sizing
+      - POSITION_NOTIONAL_USD=${POSITION_NOTIONAL_USD:-10000.0}
+      - POSITION_SIZING_MODE=${POSITION_SIZING_MODE:-fixed}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
+      interval: 20s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 40s
 
   frontend:
     build: ./frontend
     container_name: pt_frontend
     restart: unless-stopped
+    networks:
+      - internal
     ports:
       - "80:80"
     depends_on:
       backend:
         condition: service_healthy
 
+  # ── Backup service ─────────────────────────────────────────────────────────
+  backup:
+    profiles: ["backup"]
+    image: python:3.11-slim
+    container_name: pt_backup
+    volumes:
+      - db_data:/app/data:ro
+      - ./backups:/backups
+      - ../scripts/backup_db.py:/backup_db.py:ro
+    environment:
+      - DB_PATH=/app/data/paper_trading.db
+      - BACKUP_DIR=/backups
+      - BACKUP_KEEP_DAYS=${BACKUP_KEEP_DAYS:-7}
+    command: python /backup_db.py
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
 volumes:
-  data:
+  db_data:
+    # Named volume — persists the SQLite/data directory across container recreations.
+    # To back up: docker compose --profile backup run --rm backup
+  pg_data:
+    # Named volume — persists PostgreSQL data when using --profile postgres.

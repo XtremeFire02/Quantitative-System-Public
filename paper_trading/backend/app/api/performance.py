@@ -1,8 +1,36 @@
+"""
+Performance API — closed-trade statistics, equity curve, drawdown.
+
+Statistical conventions
+-----------------------
+Sharpe annualization factor: sqrt(252).
+
+This matches the convention used throughout the research code
+(research/validated/A1/21_strategy_backtest.py, A2/23_phase3_eda.py, etc.)
+so that live Sharpe is directly comparable to research baselines stored in
+ExperimentRun.metrics. It is the "daily-bar" convention.
+
+CAVEAT: N3_DVOL_LONG and P3_OIPD_DD are fixed-24h-hold strategies that fire
+on a subset of daily evaluations (~80 trades/year for N3 in research). For
+trade-based returns, the mathematically correct annualization is
+sqrt(trades_per_year) — using sqrt(252) inflates the absolute Sharpe by
+roughly sqrt(252/80) ≈ 1.77x. Internal-consistency with research is preserved
+because both use the same factor, so drift detection (ratio of live/research
+Sharpe in fwd_validation_report_job.py) remains valid.
+
+Yearly breakdown Sharpe is highly noisy with ~10-20 trades/year (SE(SR)
+under Lo 2002 is ~0.3-0.5 at that sample size). Per-year Sharpe is suppressed
+to None when fewer than 10 closed trades fall in that calendar year.
+"""
+import math
+from datetime import timezone
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from datetime import timezone
-import math
-from app.database import get_db, Trade, EquityCurve
+
+from app.database import EquityCurve, Trade, get_db
+
+_MIN_TRADES_FOR_YEARLY_SHARPE = 10  # below this, per-year Sharpe is too noisy to publish
 
 router = APIRouter()
 
@@ -15,6 +43,18 @@ def get_performance(db: Session = Depends(get_db)):
     if n == 0:
         return {
             "total_trades": 0,
+            "total_pnl": 0.0,
+            "total_pnl_bp": 0.0,
+            "sharpe": None,
+            "max_drawdown": 0.0,
+            "win_rate": None,
+            "average_win": None,
+            "average_win_bp": None,
+            "average_loss": None,
+            "average_loss_bp": None,
+            "profit_factor": None,
+            "equity_history": [],
+            "yearly_breakdown": [],
             "message": "No closed trades yet",
         }
 
@@ -38,19 +78,19 @@ def get_performance(db: Session = Depends(get_db)):
     equities = [r.equity for r in eq_rows]
     max_dd = _max_drawdown(equities) if equities else 0
 
-    # Exposure: trading days / total signal days
-    all_signals = db.query(Trade).count()
-    open_count = db.query(Trade).filter(Trade.status == "open").count()
-
     equity_history = [
         {
-            "timestamp": (r.timestamp.replace(tzinfo=timezone.utc)
-                          if r.timestamp.tzinfo is None else r.timestamp).isoformat(),
+            "timestamp": (
+                (r.timestamp.replace(tzinfo=timezone.utc)
+                 if r.timestamp.tzinfo is None else r.timestamp).isoformat()
+                if r.timestamp else None
+            ),
             "equity": r.equity,
             "drawdown": r.drawdown,
             "realised_pnl": r.realised_pnl,
         }
         for r in eq_rows
+        if r.timestamp is not None
     ]
 
     # Per-year breakdown
@@ -60,14 +100,14 @@ def get_performance(db: Session = Depends(get_db)):
         "total_trades": n,
         "total_pnl": total_pnl,
         "total_pnl_bp": round(sum(net_pnls_bp), 1),
-        "sharpe": round(sharpe, 3) if sharpe else None,
+        "sharpe": round(sharpe, 3) if sharpe is not None else None,
         "max_drawdown": round(max_dd, 4),
         "win_rate": round(win_rate, 4),
-        "average_win": round(avg_win, 6),
+        "average_win": round(avg_win, 6) if avg_win != 0 else 0.0,
         "average_win_bp": round(avg_win * 10000, 1),
-        "average_loss": round(avg_loss, 6),
+        "average_loss": round(avg_loss, 6) if avg_loss != 0 else 0.0,
         "average_loss_bp": round(avg_loss * 10000, 1),
-        "profit_factor": round(profit_factor, 3) if profit_factor else None,
+        "profit_factor": round(profit_factor, 3) if profit_factor is not None else None,
         "equity_history": equity_history,
         "yearly_breakdown": yearly,
     }
@@ -99,8 +139,13 @@ def get_performance_by_strategy(
 ):
     """Per-strategy performance breakdown.
 
-    Returns individual stats per strategy plus cross-strategy combination
-    rows so each signal can be evaluated independently and for overlap.
+    Returns separate stats for N3_DVOL_LONG, P3_OIPD_DD, and all
+    relevant combinations so each signal can be evaluated independently.
+    The key rows are:
+      N3 only        — N3_DVOL_LONG trades on days P3 did not fire
+      P3 only        — P3_OIPD_DD trades on days N3 did not fire
+      N3 + P3        — all trades from either signal
+      P3 excl N3     — P3 trades on days with no N3 trade (independence test)
     """
     closed = db.query(Trade).filter(Trade.status == "closed").all()
     if not closed:
@@ -127,7 +172,6 @@ def get_performance_by_strategy(
 
     if n3_trades and p3_trades:
         n3_dates = {_trade_date(t) for t in n3_trades}
-        p3_dates = {_trade_date(t) for t in p3_trades}
 
         # P3 trades on days with no N3 trade (independence test)
         p3_excl = [t for t in p3_trades if _trade_date(t) not in n3_dates]
@@ -178,7 +222,9 @@ def _trade_stats(trades: list[Trade]) -> dict:
     sharpe  = round(mean / std * math.sqrt(252), 3) if std > 0 else None
 
     # Running max drawdown (trade-by-trade)
-    cum = 0.0; peak = 0.0; max_dd = 0.0
+    cum = 0.0
+    peak = 0.0
+    max_dd = 0.0
     for p in net_pnls:
         cum  += p
         peak  = max(peak, cum)
@@ -212,7 +258,11 @@ def _yearly_breakdown(trades: list[Trade]) -> list[dict]:
         pnls = years[yr]
         mean = sum(pnls) / len(pnls)
         std = _std(pnls)
-        sharpe = (mean / std * math.sqrt(252)) if std > 0 else None
+        # Suppress Sharpe when sample is too small to be meaningful (see module docstring).
+        if std > 0 and len(pnls) >= _MIN_TRADES_FOR_YEARLY_SHARPE:
+            sharpe = mean / std * math.sqrt(252)
+        else:
+            sharpe = None
         result.append({
             "year": yr,
             "n_trades": len(pnls),

@@ -22,7 +22,7 @@ export default function Signals() {
       <div className="page-header">
         <div className="page-title">Signal Log</div>
         <div className="page-subtitle">
-          Every daily strategy evaluation — entry signal and reason per day
+          Every daily N3 evaluation · Frozen rule: N3z &gt; 0.75 AND DVOL ≥ 54
         </div>
       </div>
 
@@ -45,7 +45,7 @@ export default function Signals() {
       </div>
 
       {signals.length === 0 ? (
-        <div className="card" style={{ color: "#64748b", textAlign: "center", padding: 40 }}>
+        <div className="card" style={{ color: "#555555", textAlign: "center", padding: 40 }}>
           No signals recorded yet. Run the daily signal job to start.
         </div>
       ) : (
@@ -70,9 +70,9 @@ export default function Signals() {
                     {new Date(s.timestamp).toLocaleDateString()}
                   </td>
                   <td>{fmt(s.dvol, 1)}</td>
-                  <td style={{ color: "#64748b" }}>{fmt(s.dvol_mean_30d, 1)}</td>
-                  <td style={{ color: "#64748b" }}>{fmt(s.dvol_std_30d, 2)}</td>
-                  <td style={{ fontWeight: 600, color: s.entry_signal ? "#4ade80" : "#e2e8f0" }}>
+                  <td style={{ color: "#555555" }}>{fmt(s.dvol_mean_30d, 1)}</td>
+                  <td style={{ color: "#555555" }}>{fmt(s.dvol_std_30d, 2)}</td>
+                  <td style={{ fontWeight: 600, color: (s.n3_z ?? 0) > 0.75 ? "#00cc44" : "#cccccc" }}>
                     {fmt(s.n3_z, 3)}
                   </td>
                   <td>
@@ -85,7 +85,7 @@ export default function Signals() {
                       {s.entry_signal ? "● LONG" : "○ FLAT"}
                     </span>
                   </td>
-                  <td style={{ color: "#64748b", fontSize: 11, maxWidth: 300 }}>{s.reason}</td>
+                  <td style={{ color: "#555555", fontSize: 11, maxWidth: 300 }}>{s.reason}</td>
                 </tr>
               ))}
             </tbody>

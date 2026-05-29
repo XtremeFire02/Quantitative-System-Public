@@ -1,5 +1,6 @@
 """Execution test evaluator — fires every Monday to keep the system exercised."""
 from datetime import datetime, timezone
+
 from app.signals.base import SignalResult
 
 HOLD_HOURS = 24

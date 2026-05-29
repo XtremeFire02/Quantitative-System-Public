@@ -1,10 +1,11 @@
 """Bot configuration API — manage active market/strategy pairs."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
-from app.database import get_db, BotConfig
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.config_registry import AVAILABLE_MARKETS, AVAILABLE_STRATEGIES
+from app.database import BotConfig, get_db
 
 router = APIRouter()
 

@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
-from app.database import get_db, Signal, Trade, EquityCurve, MarketData
+
+from app.database import EquityCurve, MarketData, Signal, Trade, get_db
 from app.trading.pnl import calculate_unrealised_pnl
 
 router = APIRouter()
@@ -14,8 +16,21 @@ def get_dashboard(db: Session = Depends(get_db)):
     latest_market = db.query(MarketData).order_by(MarketData.id.desc()).first()
     latest_equity = db.query(EquityCurve).order_by(EquityCurve.id.desc()).first()
 
-    btc_price = latest_market.btc_price if latest_market else None
+    price = latest_market.price if latest_market else None
     funding_rate = latest_market.funding_rate if latest_market else None
+
+    # Build per-market price lookup for accurate multi-market PnL
+    open_symbols = list({t.market or "BTCUSDT" for t in open_trades})
+    prices_by_market: dict[str, float] = {}
+    for sym in open_symbols:
+        row = (
+            db.query(MarketData)
+            .filter(MarketData.symbol == sym, MarketData.price.isnot(None))
+            .order_by(MarketData.id.desc())
+            .first()
+        )
+        if row and row.price:
+            prices_by_market[sym] = row.price
 
     now = datetime.now(timezone.utc)
     total_unrealised_pnl = 0.0
@@ -23,7 +38,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     trade_summaries = []
 
     for t in open_trades:
-        current_price = btc_price if (t.market or "BTCUSDT") == "BTCUSDT" else None
+        current_price = prices_by_market.get(t.market or "BTCUSDT")
         unrealised = 0.0
         unrealised_bp = 0.0
         time_to_exit = None
@@ -51,7 +66,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     first_trade = open_trades[0] if open_trades else None
 
     return {
-        "btc_price": btc_price,
+        "price": price,
         "funding_rate": funding_rate,
         "dvol": latest_signal.dvol if latest_signal else None,
         "n3_z": latest_signal.n3_z if latest_signal else None,

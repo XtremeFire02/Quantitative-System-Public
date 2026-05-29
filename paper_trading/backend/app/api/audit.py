@@ -14,9 +14,11 @@ Entries are returned newest-first and are never mutated.
 """
 from datetime import datetime, timezone
 from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from app.database import get_db, SystemLog, Signal, Trade
+
+from app.database import Signal, SystemLog, Trade, get_db
 
 router = APIRouter()
 

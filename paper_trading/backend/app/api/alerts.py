@@ -1,10 +1,12 @@
 """Alerts API — read, acknowledge, and clear system alerts."""
 import json
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Query, HTTPException
+from datetime import timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.database import get_db, Alert
+
+from app.database import Alert, get_db
 
 router = APIRouter()
 

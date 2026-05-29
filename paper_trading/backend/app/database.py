@@ -1,10 +1,31 @@
-from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime, Text, text, UniqueConstraint, func
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    text,
+)
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 from app.config import DATABASE_URL
 
+# SQLite needs check_same_thread=False; PostgreSQL uses connection pooling instead.
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+_engine_kwargs = (
+    {}
+    if _is_sqlite
+    else {"pool_size": 5, "max_overflow": 10, "pool_pre_ping": True}
+)
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL, connect_args=_connect_args, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -15,11 +36,16 @@ class Base(DeclarativeBase):
 class MarketData(Base):
     __tablename__ = "market_data"
     id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, index=True)                  # e.g. "BTCUSDT"
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
-    btc_price = Column(Float)
-    btc_mark_price = Column(Float)
+    price = Column(Float)
+    mark_price = Column(Float)
     funding_rate = Column(Float)
     dvol = Column(Float)
+    open_interest = Column(Float)
+    price_event_time = Column(DateTime(timezone=True))   # exchange server timestamp for price
+    dvol_event_time = Column(DateTime(timezone=True))    # exchange server timestamp for DVOL
+    oi_event_time = Column(DateTime(timezone=True))      # exchange server timestamp for OI
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -45,18 +71,36 @@ class Trade(Base):
     id = Column(Integer, primary_key=True, index=True)
     market = Column(String, default="BTCUSDT")
     strategy_name = Column(String, nullable=False)
-    status = Column(String, default="open")   # open | closed
+    # Status lifecycle: open → closed | rejected (risk-blocked after signal fired)
+    status = Column(String, default="open")
     side = Column(String, default="long")
+    # Position sizing — notional USD determines execution impact and absolute P&L
+    notional_usd = Column(Float, default=10000.0)
     entry_timestamp = Column(DateTime(timezone=True))
     entry_price = Column(Float)
     entry_dvol = Column(Float)
     entry_n3_z = Column(Float)
+    # Execution quality at entry — from execution_sim, recorded for post-trade attribution
+    entry_half_spread_bp = Column(Float, nullable=True)
+    entry_impact_bp = Column(Float, nullable=True)
+    entry_maker_prob = Column(Float, nullable=True)
+    entry_quality_score = Column(Float, nullable=True)
+    # Simulated fill — signal_price is the evaluation price; entry_price is the fill
+    signal_price = Column(Float, nullable=True)       # price at signal evaluation
+    fill_type = Column(String, nullable=True)         # "maker" or "taker"
+    # Exit simulated fill — exit_signal_price is the raw market price at exit
+    exit_signal_price = Column(Float, nullable=True)  # raw market price at exit
+    # Execution quality at exit — from estimate_exit_execution, recorded for post-trade attribution
+    exit_half_spread_bp = Column(Float, nullable=True)
+    exit_impact_bp = Column(Float, nullable=True)
+    exit_quality_score = Column(Float, nullable=True)
     planned_exit_timestamp = Column(DateTime(timezone=True))
     exit_timestamp = Column(DateTime(timezone=True), nullable=True)
     exit_price = Column(Float, nullable=True)
     gross_price_return = Column(Float, nullable=True)
     funding_pnl = Column(Float, nullable=True)
     fees = Column(Float, nullable=True)
+    # Slippage: spread + market impact (from execution sim) — separate from exchange fees
     slippage = Column(Float, nullable=True)
     net_pnl = Column(Float, nullable=True)
     net_pnl_bp = Column(Float, nullable=True)
@@ -142,6 +186,44 @@ class ExperimentRun(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class Order(Base):
+    """
+    Persistent order record — one row per trade attempt.
+
+    State machine: submitted → acknowledged → partially_filled → filled
+                                             ↘ cancelled
+                             ↘ rejected
+
+    In paper trading all transitions fire synchronously. In a live adapter
+    'submitted → acknowledged' and 'acknowledged → filled' would correspond
+    to real exchange round-trip latency.
+    """
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    order_ref = Column(String, unique=True, nullable=False, index=True)  # UUID
+    run_ref = Column(String, nullable=True)    # optional job run identifier
+    market = Column(String, nullable=False)
+    strategy_name = Column(String, nullable=False)
+    side = Column(String, nullable=False)       # "long" | "short"
+    notional_usd = Column(Float, nullable=False)
+    requested_price = Column(Float, nullable=True)
+    status = Column(String, nullable=False, default="submitted")
+    fill_quantity_pct = Column(Float, default=0.0)   # 0.0 – 1.0
+    fill_price = Column(Float, nullable=True)
+    fill_type = Column(String, nullable=True)          # "maker" | "taker"
+    trade_id = Column(Integer, nullable=True)          # set on fill
+    rejection_reason = Column(Text, nullable=True)
+    exchange_ref = Column(String, nullable=True)       # exchange order ID (live only)
+    order_type = Column(String, nullable=False, default="market")    # "market" | "limit" | "post_only"
+    time_in_force = Column(String, nullable=False, default="IOC")   # "IOC" | "FOK" | "GTC"
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    filled_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -153,25 +235,54 @@ def get_db():
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-    # SQLite migrations for columns added after initial schema
-    _migrations = [
-        "ALTER TABLE trades ADD COLUMN entry_reason TEXT",
-        "ALTER TABLE trades ADD COLUMN market TEXT DEFAULT 'BTCUSDT'",
-        "ALTER TABLE signals ADD COLUMN market TEXT DEFAULT 'BTCUSDT'",
-        "ALTER TABLE signals ADD COLUMN signal_metadata TEXT",
-        # Alert structured fields (v2)
-        "ALTER TABLE alerts ADD COLUMN strategy TEXT",
-        "ALTER TABLE alerts ADD COLUMN market TEXT",
-        "ALTER TABLE alerts ADD COLUMN exposure TEXT",
-        "ALTER TABLE alerts ADD COLUMN action_taken TEXT",
-    ]
-    with engine.connect() as conn:
-        for stmt in _migrations:
-            try:
-                conn.execute(text(stmt))
-                conn.commit()
-            except Exception:
-                pass  # Column already exists
+    # SQLite-only migrations: PostgreSQL gets all columns from create_all above.
+    # These ALTER TABLE statements are safe to run repeatedly on SQLite — each
+    # is wrapped in a try/except so "column already exists" is silently skipped.
+    if _is_sqlite:
+        _migrations = [
+            "ALTER TABLE trades ADD COLUMN entry_reason TEXT",
+            "ALTER TABLE trades ADD COLUMN market TEXT DEFAULT 'BTCUSDT'",
+            "ALTER TABLE signals ADD COLUMN market TEXT DEFAULT 'BTCUSDT'",
+            "ALTER TABLE signals ADD COLUMN signal_metadata TEXT",
+            # Alert structured fields (v2)
+            "ALTER TABLE alerts ADD COLUMN strategy TEXT",
+            "ALTER TABLE alerts ADD COLUMN market TEXT",
+            "ALTER TABLE alerts ADD COLUMN exposure TEXT",
+            "ALTER TABLE alerts ADD COLUMN action_taken TEXT",
+            # MarketData base columns (v3a)
+            "ALTER TABLE market_data ADD COLUMN price REAL",
+            "ALTER TABLE market_data ADD COLUMN mark_price REAL",
+            "ALTER TABLE market_data ADD COLUMN funding_rate REAL",
+            "ALTER TABLE market_data ADD COLUMN dvol REAL",
+            # MarketData feed-quality columns (v3)
+            "ALTER TABLE market_data ADD COLUMN symbol TEXT",
+            "ALTER TABLE market_data ADD COLUMN open_interest REAL",
+            "ALTER TABLE market_data ADD COLUMN price_event_time DATETIME",
+            "ALTER TABLE market_data ADD COLUMN dvol_event_time DATETIME",
+            "ALTER TABLE market_data ADD COLUMN oi_event_time DATETIME",
+            # Trade position sizing + execution quality columns (v4)
+            "ALTER TABLE trades ADD COLUMN notional_usd REAL DEFAULT 10000.0",
+            "ALTER TABLE trades ADD COLUMN entry_half_spread_bp REAL",
+            "ALTER TABLE trades ADD COLUMN entry_impact_bp REAL",
+            "ALTER TABLE trades ADD COLUMN entry_maker_prob REAL",
+            "ALTER TABLE trades ADD COLUMN entry_quality_score REAL",
+            # Simulated fill columns (v5)
+            "ALTER TABLE trades ADD COLUMN signal_price REAL",
+            "ALTER TABLE trades ADD COLUMN fill_type TEXT",
+            # Exit simulated fill columns (v6)
+            "ALTER TABLE trades ADD COLUMN exit_signal_price REAL",
+            # Exit execution quality columns (v7)
+            "ALTER TABLE trades ADD COLUMN exit_half_spread_bp REAL",
+            "ALTER TABLE trades ADD COLUMN exit_impact_bp REAL",
+            "ALTER TABLE trades ADD COLUMN exit_quality_score REAL",
+        ]
+        with engine.connect() as conn:
+            for stmt in _migrations:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                except Exception:
+                    pass  # Column already exists
 
     # Seed initial equity curve row if empty
     db = SessionLocal()

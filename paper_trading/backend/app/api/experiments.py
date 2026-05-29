@@ -11,10 +11,12 @@ PATCH /api/experiments/{run_id} — update verdict / notes
 """
 import json
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.database import get_db, ExperimentRun
+
+from app.database import ExperimentRun, get_db
 
 router = APIRouter()
 

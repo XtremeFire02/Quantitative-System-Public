@@ -33,9 +33,10 @@ Every hypothesis is tracked from formation to a binary verdict. Nothing is aband
 | B2 | S1b — Pre-Settlement Flow | Killed | Stage 2 | [`B2.tex`](results/reports/killed%20reports/B2.tex) |
 | B2 | S1c — Cross-Exchange Funding Divergence | Killed | Stage 2 | [`B2.tex`](results/reports/killed%20reports/B2.tex) |
 | Archive | CVD Divergence, VPIN Regime | Killed | Early stages | — |
-| (Private) | 2 validated signals | **Stage 7 — live paper trading** | — | Private |
+| A1 | N3 — DVOL Z-Score signal | **Validated** | Stage 7 — live paper trading | [`A1.tex`](results/reports/validated%20reports/A1.tex) |
+| A2 | P1 (VRP), P2 (TAR), P3 (OI-Price Divergence) | P3 Validated; P1/P2 Killed | Stage 7 (P3) | [`A2.tex`](results/reports/validated%20reports/A2.tex) |
 
-The kill reports for B1 and B2 are full LaTeX documents with IC results, bootstrap confidence intervals, regime breakdowns, and cost-adjusted PnL tables. The validated signal reports are private.
+The kill reports for B1 and B2 are full LaTeX documents with IC results, bootstrap confidence intervals, regime breakdowns, and cost-adjusted PnL tables. The validated signal reports (A1, A2) include the full statistical methodology and out-of-sample results; specific entry thresholds are withheld.
 
 ---
 
@@ -178,16 +179,19 @@ Binance FAPI ──────────┘ (price + funding)                
 
 | Component | File | Purpose |
 |---|---|---|
-| Data fetchers | `app/data/` | DVOL from Deribit, price + funding from Binance FAPI |
+| Data fetchers | `app/data/` | DVOL from Deribit, price + funding + OI from Binance FAPI |
 | Signal engine | `app/signals/` | Strategy evaluators + dispatcher |
 | Risk checks | `app/trading/risk.py` | Data staleness, per-strategy position limits |
-| Portfolio risk | `app/trading/portfolio_risk.py` | Max positions, daily loss, strategy drawdown |
+| Portfolio risk | `app/trading/portfolio_risk.py` | Max positions, daily loss, strategy drawdown, consecutive losses |
 | Kill switch | `app/trading/kill_switch.py` | System-wide trade halt (DB-persisted) |
 | Paper broker | `app/trading/paper_broker.py` | Open/close paper positions, update equity |
+| OMS | `app/trading/oms.py` | Order management — pre-trade risk gate before broker submit |
+| Position sizer | `app/trading/position_sizer.py` | Fixed and volatility-scaled sizing modes |
+| Broker adapter | `app/trading/broker_adapter.py` | Abstract broker interface; live adapter for future exchange integration |
 | PnL calculator | `app/trading/pnl.py` | Price return + funding − fees |
-| Scheduler | `app/main.py` | APScheduler: daily signal job + 15-min exit check |
-| API | `app/api/` | FastAPI routers (dashboard, signals, trades, risk, pipeline, …) |
-| Database | `app/database.py` | SQLAlchemy ORM — 9 tables |
+| Scheduler | `app/main.py` | APScheduler: daily signal job + 15-min exit check + fwd validation report |
+| API | `app/api/` | FastAPI routers (dashboard, signals, trades, risk, analytics, market monitor, options, …) |
+| Database | `app/database.py` | SQLAlchemy ORM — 13 tables |
 
 **Scheduled jobs:**
 
@@ -205,11 +209,20 @@ Binance FAPI ──────────┘ (price + funding)                
 | Route | Page | Purpose |
 |---|---|---|
 | `/` | Dashboard | Live market data, signal status, open position, equity |
+| `/chart` | Chart | Interactive OHLCV price chart with signal overlays |
+| `/monitor` | MarketMonitor | Real-time BTC market snapshot (price, OI, funding, DVOL) |
+| `/options` | Options | Deribit options chain and IV surface overview |
+| `/vol-surface` | VolSurface | Implied volatility surface visualisation |
+| `/news` | News | Crypto news feed with sentiment tagging |
+| `/analytics` | Analytics | Signal analytics: regime breakdown, IC series, return distributions |
 | `/signals` | Signals | Every daily evaluation with reason string |
 | `/trades` | Trades | Full trade log: price return + funding − fees per trade |
 | `/trades/:id` | Trade Detail | Per-trade PnL attribution and entry signal context |
 | `/performance` | Performance | Equity curve, drawdown, Sharpe, yearly breakdown |
-| `/forward-log` | ForwardLog | Shadow strategy log + independence monitor |
+| `/replay` | Replay | Historical signal replay — step through past evaluations |
+| `/forward-log` | ForwardLog | Shadow strategy log + N3/P3 independence monitor |
+| `/forward-validation` | ForwardValidation | Automated 3-month forward validation report |
+| `/portfolio` | Portfolio | Multi-strategy portfolio exposure and correlation view |
 | `/risk` | RiskDashboard | Portfolio exposure, limit gauges, kill switch |
 | `/pipeline` | StrategyPipeline | Strategy lifecycle status editor |
 | `/alerts` | Alerts | Alert inbox with category filter |

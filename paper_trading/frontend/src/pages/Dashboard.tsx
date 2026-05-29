@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, DashboardData } from "../api";
+import { toast } from "../components/Toast";
+import { SkeletonCards } from "../components/Skeleton";
 
 const fmt = (v: number | null, dec = 2) =>
   v == null ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -32,27 +35,29 @@ export default function Dashboard() {
     setTriggering(true);
     try {
       await api.runDailySignal();
+      toast.success("Daily signal job triggered");
       await load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast.error(`Signal job failed: ${msg}`);
     } finally {
       setTriggering(false);
     }
   };
 
-  if (loading) return <div className="loading">Loading dashboard…</div>;
+  if (loading) return <><div className="page-header"><div className="page-title">Dashboard</div></div><SkeletonCards n={6} /></>;
   if (error) return <div className="error-msg">Error: {error}</div>;
   if (!data) return null;
 
-  const dvolColor = data.dvol_filter_pass ? "#4ade80" : "#f87171";
-  const signalColor = data.entry_signal ? "#4ade80" : "#64748b";
+  const dvolColor = data.dvol_filter_pass ? "#00cc44" : "#ff3333";
 
   return (
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div className="page-title">Dashboard</div>
-          <div className="page-subtitle">Live market data, signal status, and open positions</div>
+          <div className="page-subtitle">Paper trading · Live signals · {data.open_position ? `${(data.open_trades ?? []).length} open position(s)` : "Flat"}</div>
         </div>
         <div className="btn-row" style={{ marginBottom: 0 }}>
           <button className="btn btn-ghost" onClick={load}>↻ Refresh</button>
@@ -67,7 +72,7 @@ export default function Dashboard() {
       <div className="cards-grid">
         <div className="card">
           <div className="card-label">BTC Price</div>
-          <div className="card-value">${fmt(data.btc_price, 0)}</div>
+          <div className="card-value">${fmt(data.price, 0)}</div>
           <div className="card-sub">Last update: {data.last_market_update ? new Date(data.last_market_update).toLocaleTimeString() : "—"}</div>
         </div>
         <div className="card">
@@ -89,14 +94,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-label">N3 z-score</div>
             <div className="card-value">{fmt(data.n3_z, 3)}</div>
-            <div className="card-sub">Volatility z-score</div>
+            <div className="card-sub">vs 0.75 threshold</div>
           </div>
           <div className="card">
             <div className="card-label">DVOL Filter</div>
             <div className="card-value" style={{ fontSize: 15 }}>
               {data.dvol_filter_pass == null ? "—" : (
                 <span className={`badge ${data.dvol_filter_pass ? "badge-green" : "badge-red"}`}>
-                  {data.dvol_filter_pass ? "PASS" : "FAIL"}
+                  {data.dvol_filter_pass ? "PASS ≥ 54" : "FAIL < 54"}
                 </span>
               )}
             </div>
@@ -115,44 +120,63 @@ export default function Dashboard() {
           </div>
         </div>
         {data.signal_reason && (
-          <div style={{ marginTop: 10, padding: "10px 14px", background: "#0d0d14", borderRadius: 8, border: "1px solid #1e1e2e", fontSize: 12, color: "#94a3b8" }}>
+          <div style={{ marginTop: 10, padding: "10px 14px", background: "#0d0d0d", border: "1px solid #2a2a2a", fontSize: 12, color: "#888888", fontFamily: "Courier New" }}>
             {data.signal_reason}
           </div>
         )}
       </div>
 
-      {/* Position */}
+      {/* Positions */}
       <div className="section">
-        <div className="section-title">Position</div>
-        {data.open_position && data.open_trade ? (
-          <div className="cards-grid">
-            <div className="card">
-              <div className="card-label">Status</div>
-              <div className="card-value" style={{ fontSize: 15 }}>
-                <span className="badge badge-blue">● LONG Open</span>
+        <div className="section-title">Open Positions</div>
+        {data.open_position && (data.open_trades ?? []).length > 0 ? (
+          <>
+            {(data.open_trades ?? [data.open_trade]).filter(Boolean).map(t => (
+              <div key={t!.id} className="card" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div>
+                    <span className={`badge ${t!.side === "long" ? "badge-blue" : "badge-red"}`}>
+                      {t!.side.toUpperCase()}
+                    </span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: "#666" }}>
+                      {t!.strategy_name} · {t!.market}
+                    </span>
+                  </div>
+                  <Link to={`/trades/${t!.id}`} style={{ fontSize: 11, color: "#555555", textDecoration: "none" }}>
+                    Trade #{t!.id} →
+                  </Link>
+                </div>
+                <div className="cards-grid" style={{ margin: 0 }}>
+                  <div>
+                    <div className="card-label">Entry Price</div>
+                    <div className="card-value" style={{ fontSize: 16 }}>${fmt(t!.entry_price, 0)}</div>
+                    <div className="card-sub">{new Date(t!.entry_timestamp).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="card-label">Unrealised PnL</div>
+                    <div className="card-value" style={{ fontSize: 16 }}>
+                      {t!.unrealised_pnl_bp != null ? <PnlValue bp={t!.unrealised_pnl_bp} /> : "—"}
+                    </div>
+                    <div className="card-sub">Before costs</div>
+                  </div>
+                  <div>
+                    <div className="card-label">Exit In</div>
+                    <div className="card-value" style={{ fontSize: 16 }}>
+                      {t!.time_to_exit_hours != null ? `${t!.time_to_exit_hours}h` : "—"}
+                    </div>
+                    <div className="card-sub">{t!.planned_exit_timestamp ? new Date(t!.planned_exit_timestamp).toLocaleString() : ""}</div>
+                  </div>
+                </div>
               </div>
-              <div className="card-sub">Trade #{data.open_trade.id}</div>
-            </div>
-            <div className="card">
-              <div className="card-label">Entry Price</div>
-              <div className="card-value">${fmt(data.open_trade.entry_price, 0)}</div>
-              <div className="card-sub">{new Date(data.open_trade.entry_timestamp).toLocaleString()}</div>
-            </div>
-            <div className="card">
-              <div className="card-label">Unrealised PnL</div>
-              <div className="card-value" style={{ fontSize: 18 }}>
-                <PnlValue bp={data.unrealised_pnl_bp} />
+            ))}
+            <div className="card" style={{ background: "#0a0a0a" }}>
+              <div style={{ display: "flex", gap: 24, fontSize: 12, color: "#666" }}>
+                <span>Total unrealised: <PnlValue bp={data.unrealised_pnl_bp} /></span>
               </div>
-              <div className="card-sub">Before costs</div>
             </div>
-            <div className="card">
-              <div className="card-label">Exit In</div>
-              <div className="card-value" style={{ fontSize: 18 }}>{data.time_to_exit_hours != null ? `${data.time_to_exit_hours}h` : "—"}</div>
-              <div className="card-sub">{data.open_trade.planned_exit_timestamp ? new Date(data.open_trade.planned_exit_timestamp).toLocaleString() : ""}</div>
-            </div>
-          </div>
+          </>
         ) : (
-          <div className="card" style={{ color: "#64748b" }}>No open position · Strategy is flat</div>
+          <div className="card" style={{ color: "#555555" }}>No open positions · Strategy is flat</div>
         )}
       </div>
 
